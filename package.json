@@ -1,0 +1,42 @@
+{
+  "name": "cuemap",
+  "version": "0.4.1",
+  "description": "Redis for AI Agents - High-performance temporal-associative memory",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "ai",
+    "agents",
+    "memory",
+    "redis",
+    "temporal",
+    "associative",
+    "llm",
+    "rag"
+  ],
+  "author": "Kaan Demirel <kaandemirel@yahoo.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cuemap-dev/sdks.git",
+    "directory": "typescript"
+  },
+  "bugs": {
+    "url": "https://github.com/cuemap-dev/sdks/issues"
+  },
+  "homepage": "https://github.com/cuemap-dev/sdks/tree/main/typescript#readme",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}
