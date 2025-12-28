@@ -26,21 +26,31 @@ export interface RecallResult {
   intersection_count: number;
   recency_score: number;
   reinforcement_score: number;
+  salience: number;
+  match_integrity: number;
+  structural_cues: string[];
   metadata: Record<string, any>;
+  explain?: Record<string, any>;
 }
 
 export interface AddMemoryRequest {
   content: string;
   cues: string[];
   metadata?: Record<string, any>;
+  disable_temporal_chunking?: boolean;
 }
 
 export interface RecallRequest {
-  cues: string[];
+  cues?: string[];
+  query_text?: string;
   limit?: number;
   auto_reinforce?: boolean;
   min_intersection?: number;
   projects?: string[];
+  explain?: boolean;
+  disable_pattern_completion?: boolean;
+  disable_salience_bias?: boolean;
+  disable_systems_consolidation?: boolean;
 }
 
 export interface ReinforceRequest {
@@ -124,49 +134,56 @@ export class CueMap {
   async add(
     content: string,
     cues: string[],
-    metadata?: Record<string, any>
+    metadata?: Record<string, any>,
+    disableTemporalChunking: boolean = false
   ): Promise<string> {
     const response = await this.request<{ id: string }>(
       'POST',
       '/memories',
-      { content, cues, metadata: metadata || {} }
+      { content, cues, metadata: metadata || {}, disable_temporal_chunking: disableTemporalChunking }
     );
     return response.id;
   }
 
   /**
-   * Recall memories by cues
+   * Recall memories by cues or natural language
    * 
    * @param cues - List of cues to search for
    * @param limit - Maximum results to return
    * @param autoReinforce - Automatically reinforce retrieved memories
-   * @param minIntersection - Minimum number of cues that must match (for strict AND logic)
-   * @param projects - List of project IDs for cross-domain queries (multi-tenant only)
-   * 
-   * @example
-   * // OR logic (default): matches any cue
-   * const results = await client.recall(['meeting', 'john']);
-   * 
-   * @example
-   * // AND logic: requires both cues
-   * const results = await client.recall(['meeting', 'john'], 10, false, 2);
-   * 
-   * @example
-   * // Cross-domain query (multi-tenant)
-   * const results = await client.recall(['urgent'], 10, false, undefined, ['sales', 'support']);
+   * @param minIntersection - Minimum number of cues that must match
+   * @param projects - List of project IDs for cross-domain queries
+   * @param queryText - Natural language query to resolve via Lexicon
+   * @param explain - Include recall explanation in results
    */
   async recall(
-    cues: string[],
+    cues?: string[],
     limit: number = 10,
     autoReinforce: boolean = false,
     minIntersection?: number,
-    projects?: string[]
-  ): Promise<RecallResult[]> {
+    projects?: string[],
+    queryText?: string,
+    explain: boolean = false,
+    disablePatternCompletion: boolean = false,
+    disableSalienceBias: boolean = false,
+    disableSystemsConsolidation: boolean = false
+  ): Promise<any> {
     const payload: RecallRequest = {
-      cues,
       limit,
       auto_reinforce: autoReinforce,
+      explain,
+      disable_pattern_completion: disablePatternCompletion,
+      disable_salience_bias: disableSalienceBias,
+      disable_systems_consolidation: disableSystemsConsolidation,
     };
+
+    if (cues) {
+      payload.cues = cues;
+    }
+
+    if (queryText) {
+      payload.query_text = queryText;
+    }
 
     if (minIntersection !== undefined) {
       payload.min_intersection = minIntersection;
@@ -176,12 +193,64 @@ export class CueMap {
       payload.projects = projects;
     }
 
-    const response = await this.request<{ results: RecallResult[] }>(
+    const response = await this.request<any>(
       'POST',
       '/recall',
       payload
     );
-    return response.results;
+
+    return response;
+  }
+
+  /**
+   * List all projects (multi-tenant only)
+   */
+  async listProjects(): Promise<string[]> {
+    return await this.request<string[]>('GET', '/projects');
+  }
+
+  /**
+   * Delete a project (multi-tenant only)
+   */
+  async deleteProject(projectId: string): Promise<boolean> {
+    try {
+      await this.request('DELETE', `/projects/${projectId}`);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Add a manual alias (cue mapping)
+   */
+  async addAlias(from: string, to: string, weight: number = 1.0): Promise<boolean> {
+    try {
+      await this.request('POST', '/aliases', { from, to, weight });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Get all aliases, optionally filtered by cue
+   */
+  async getAliases(cue?: string): Promise<any[]> {
+    const path = cue ? `/aliases?cue=${encodeURIComponent(cue)}` : '/aliases';
+    return await this.request<any[]>('GET', path);
+  }
+
+  /**
+   * Merge multiple cues into a canonical canonical cue
+   */
+  async mergeAliases(cues: string[], to: string): Promise<boolean> {
+    try {
+      await this.request('POST', '/aliases/merge', { cues, to });
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -208,6 +277,128 @@ export class CueMap {
    */
   async stats(): Promise<Record<string, any>> {
     return await this.request<Record<string, any>>('GET', '/stats');
+  }
+
+  /**
+   * Recall grounded context with token budgeting
+   */
+  async recallGrounded(
+    query: string,
+    tokenBudget: number = 500,
+    limit: number = 10,
+    projects?: string[],
+    disablePatternCompletion: boolean = false,
+    disableSalienceBias: boolean = false,
+    disableSystemsConsolidation: boolean = false
+  ): Promise<RecallGroundedResponse> {
+    const payload: RecallGroundedRequest = {
+      query_text: query,
+      token_budget: tokenBudget,
+      limit,
+      disable_pattern_completion: disablePatternCompletion,
+      disable_salience_bias: disableSalienceBias,
+      disable_systems_consolidation: disableSystemsConsolidation,
+    };
+
+    if (projects) {
+      payload.projects = projects;
+    }
+
+    return await this.request<RecallGroundedResponse>(
+      'POST',
+      '/recall/grounded',
+      payload
+    );
+  }
+}
+
+export interface SelectedItem {
+  memory_id: string;
+  content: string;
+  score: number;
+  intersection_count: number;
+  recency_component: number;
+  reinforcement_component: number;
+  match_integrity: number;
+  source: string;
+  timestamp: string;
+  estimated_tokens: number;
+  why: string;
+}
+
+export interface ExcludedItem {
+  memory_id: string;
+  score: number;
+  reason: string;
+}
+
+export interface GroundingProof {
+  trace_id: string;
+  query_text: string;
+  normalized_query: string[];
+  expanded_cues: [string, number][];
+  token_budget: number;
+  selected: SelectedItem[];
+  excluded_top: ExcludedItem[];
+}
+
+export interface RecallGroundedRequest {
+  query_text: string;
+  token_budget: number;
+  limit?: number;
+  projects?: string[];
+  disable_pattern_completion?: boolean;
+  disable_salience_bias?: boolean;
+  disable_systems_consolidation?: boolean;
+}
+
+export interface RecallGroundedResponse {
+  verified_context: string;
+  proof: GroundingProof;
+  engine_latency_ms: number;
+}
+
+/**
+ * Tiny library for Relevance Compression & Grounding
+ */
+export class CueMapGroundingRetriever {
+  private client: CueMap;
+
+  constructor(configOrClient?: CueMapConfig | CueMap) {
+    if (configOrClient instanceof CueMap) {
+      this.client = configOrClient;
+    } else {
+      this.client = new CueMap(configOrClient);
+    }
+  }
+
+  /**
+   * Retrieve grounded context for prompt injection
+   */
+  async retrieveGrounded(
+    queryText: string,
+    tokenBudget: number = 500,
+    limit: number = 10,
+    projects?: string[],
+    disablePatternCompletion: boolean = false
+  ): Promise<{
+    verified_context_block: string;
+    grounding_proof: GroundingProof;
+    selected_memories: SelectedItem[];
+  }> {
+    const response = await this.client.recallGrounded(
+      queryText,
+      tokenBudget,
+      limit,
+      projects,
+      disablePatternCompletion
+    );
+
+    return {
+      verified_context_block: response.verified_context,
+      grounding_proof: response.proof,
+      selected_memories: response.proof.selected,
+    };
   }
 }
 

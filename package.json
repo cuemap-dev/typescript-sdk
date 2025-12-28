@@ -1,7 +1,7 @@
 {
   "name": "cuemap",
-  "version": "0.4.1",
-  "description": "Redis for AI Agents - High-performance temporal-associative memory",
+  "version": "0.5.0",
+  "description": "CueMap TypeScript SDK - High-performance temporal-associative memory",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -13,7 +13,6 @@
     "ai",
     "agents",
     "memory",
-    "redis",
     "temporal",
     "associative",
     "llm",

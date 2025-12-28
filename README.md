@@ -81,6 +81,67 @@ for (const result of results) {
   console.log(`${result.content} (score: ${result.score})`);
 }
 
+### Natural Language Recall (Deterministic)
+
+Use the built-in Lexicon to resolve human language into canonical cues.
+
+```typescript
+// Resolved via Lexicon: "payment" -> "service:payment", "timeout" -> "error:timeout"
+const results = await client.recall(undefined, 10, false, undefined, undefined, "payment timeout");
+```
+
+### Alias Management (Manual Control)
+
+Tweak the engine's deterministic mapping directly.
+
+```typescript
+// Add a manual alias
+await client.addAlias("pay", "service:payment", 0.9);
+
+// Merge multiple terms into one canonical cue
+await client.mergeAliases(["failed", "error", "bug"], "status:error");
+
+// Get aliases
+const aliases = await client.getAliases("pay");
+```
+
+### Safety: Disable Pattern Completion
+
+For peak determinism, disable the brain-inspired associative expansion.
+
+```typescript
+// Strict matching only, no associative inference
+const results = await client.recall(
+  ["urgent"],
+  10,
+  false,
+  undefined,
+  undefined,
+  undefined,
+  false, // explain
+  true   // disablePatternCompletion
+);
+```
+
+### Explainable Recall
+
+See how the query was normalized and expanded.
+
+```typescript
+const results = await client.recall(
+  undefined,
+  10,
+  false,
+  undefined,
+  undefined,
+  "payment failed",
+  true // explain
+);
+
+// Access explanation
+console.log(results[0].explain);
+```
+
 // AND logic: requires all cues to match
 const strictResults = await client.recall(
   ["meeting", "john"],
@@ -119,6 +180,59 @@ const stats = await client.stats();
 console.log(`Total memories: ${stats.total_memories}`);
 ```
 
+## Advanced Controls (Safety Audit)
+
+For peak determinism or specific recall strategies, you can disable brain-inspired features per-request.
+
+```typescript
+// 1. Disable Pattern Completion (Strict matching only)
+const results = await client.recall(
+  ["urgent"],
+  10,
+  false,
+  undefined,
+  undefined,
+  undefined,
+  false,
+  true // disablePatternCompletion
+);
+
+// 2. Disable Salience Bias (Ignore "importance" signals)
+const legacyResults = await client.recall(
+  undefined,
+  10,
+  false,
+  undefined,
+  undefined,
+  "server logs",
+  false,
+  false,
+  true // disableSalienceBias
+);
+
+// 3. Disable Systems Consolidation (Ignore summarized "gist" memories)
+const rawResults = await client.recall(
+  undefined,
+  10,
+  false,
+  undefined,
+  undefined,
+  "project history",
+  false,
+  false,
+  false,
+  true // disableSystemsConsolidation
+);
+
+// 4. Disable Temporal Chunking (Stop automatic episode creation at write-time)
+await client.add(
+  "Standalone event",
+  ["event"],
+  {},
+  true // disableTemporalChunking
+);
+```
+
 ## TypeScript Types
 
 ```typescript
@@ -126,6 +240,9 @@ interface RecallResult {
   memory_id: string;
   content: string;
   score: number;
+  match_integrity: number;
+  salience: number;
+  structural_cues: string[];
   intersection_count: number;
   recency_score: number;
   metadata: Record<string, any>;
@@ -202,23 +319,43 @@ class CueMapMemory extends BaseMemory {
 }
 ```
 
-### Manual Cues (Production)
-
-```typescript
-// Explicit, predictable cues
-await client.add(
-  "Deploy command: kubectl apply -f deployment.yaml",
-  ["deployment", "kubernetes", "commands", "devops"]
-);
-
-await client.add(
-  "API endpoint: https://api.example.com/v1/users",
-  ["api", "endpoint", "users", "documentation"]
-);
-
-// Query with specific cues
 const deploymentDocs = await client.recall(["deployment", "kubernetes"]);
 const apiDocs = await client.recall(["api", "users"]);
+
+## Grounding & Token Budgeting (v0.5)
+
+CueMap v0.5 introduces the **Relevance Compression Engine** to prevent LLM hallucinations by providing a "Hallucination Guardrail".
+
+### Grounded Recall
+
+Get the most relevant context formatted specifically for LLM prompts, within a strict token budget.
+
+```typescript
+const result = await client.recallGrounded(
+  "Why is the payment failing?",
+  500, // tokenBudget
+  10   // limit
+);
+
+console.log(result.verified_context);
+// Output: [VERIFIED CONTEXT] (1) Fact... Rules: Use only context...
+```
+
+### CueMapGroundingRetriever (Middleware)
+
+A tiny library for easy integration into custom pipelines.
+
+```typescript
+import { CueMapGroundingRetriever } from 'cuemap';
+
+const retriever = new CueMapGroundingRetriever();
+const result = await retriever.retrieveGrounded(
+  "Why did the database fail?",
+  300
+);
+
+// context ready for prompt injection
+const prompt = `Answer this query: ${query}\n\n${result.verified_context_block}`;
 ```
 
 ## Error Handling
