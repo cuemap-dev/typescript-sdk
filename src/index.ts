@@ -148,21 +148,21 @@ export class CueMap {
   /**
    * Recall memories by cues or natural language
    * 
+   * @param queryText - Natural language query to resolve via Lexicon
    * @param cues - List of cues to search for
    * @param limit - Maximum results to return
    * @param autoReinforce - Automatically reinforce retrieved memories
    * @param minIntersection - Minimum number of cues that must match
    * @param projects - List of project IDs for cross-domain queries
-   * @param queryText - Natural language query to resolve via Lexicon
    * @param explain - Include recall explanation in results
    */
   async recall(
+    queryText?: string,
     cues?: string[],
+    projects?: string[],
     limit: number = 10,
     autoReinforce: boolean = false,
     minIntersection?: number,
-    projects?: string[],
-    queryText?: string,
     explain: boolean = false,
     disablePatternCompletion: boolean = false,
     disableSalienceBias: boolean = false,
@@ -309,6 +309,111 @@ export class CueMap {
       '/recall/grounded',
       payload
     );
+  }
+
+  // --- Lexicon Methods ---
+
+  /**
+   * Manually wire a token to a canonical cue
+   */
+  async lexiconWire(token: string, canonical: string): Promise<any> {
+    return await this.request<any>('POST', '/lexicon/wire', { token, canonical });
+  }
+
+  /**
+   * Inspect a cue's relationships in the Lexicon
+   */
+  async lexiconInspect(cue: string): Promise<any> {
+    const encoded = encodeURIComponent(cue);
+    return await this.request<any>('GET', `/lexicon/inspect/${encoded}`);
+  }
+
+  /**
+   * Get the full Lexicon graph
+   */
+  async lexiconGraph(): Promise<any> {
+    return await this.request<any>('GET', '/lexicon/graph');
+  }
+
+  /**
+   * Get WordNet synonyms and graph suggestions for a cue
+   */
+  async lexiconSynonyms(cue: string): Promise<any> {
+    const encoded = encodeURIComponent(cue);
+    return await this.request<any>('GET', `/lexicon/synonyms/${encoded}`);
+  }
+
+  /**
+   * Delete a Lexicon entry
+   */
+  async lexiconDelete(memoryId: string): Promise<boolean> {
+    try {
+      await this.request('DELETE', `/lexicon/entry/${memoryId}`);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // --- Ingestion Methods ---
+
+  /**
+   * Ingest content from a URL
+   */
+  async ingestUrl(url: string): Promise<any> {
+    return await this.request<any>('POST', '/ingest/url', { url });
+  }
+
+  /**
+   * Ingest raw content
+   */
+  async ingestContent(content: string, filename: string = "content.txt"): Promise<any> {
+    return await this.request<any>('POST', '/ingest/content', { content, filename });
+  }
+
+  /**
+   * Ingest a file (File/Blob)
+   * Note: This bypasses the json wrapper request() method because it uses FormData
+   */
+  async ingestFile(file: any): Promise<any> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const headers = this.getHeaders();
+    // Remove Content-Type so fetch can set it with boundary
+    delete headers['Content-Type'];
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+    try {
+      const response = await fetch(`${this.url}/ingest/file`, {
+        method: 'POST',
+        headers: headers,
+        body: formData,
+        signal: controller.signal as any,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new CueMapError(`Request failed: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      clearTimeout(timeoutId);
+      throw new CueMapError(`Request failed: ${error}`);
+    }
+  }
+
+  // --- Job Status ---
+
+  /**
+   * Get background job status for the current project
+   */
+  async jobsStatus(): Promise<any> {
+    return await this.request<any>('GET', '/jobs/status');
   }
 }
 

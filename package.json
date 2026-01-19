@@ -1,6 +1,6 @@
 {
   "name": "cuemap",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "CueMap TypeScript SDK - High-performance temporal-associative memory",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -18,7 +18,7 @@
     "llm",
     "rag"
   ],
-  "author": "Kaan Demirel <kaandemirel@yahoo.com>",
+  "author": "Kaan Demirel <hello@cuemap.dev>",
   "license": "MIT",
   "repository": {
     "type": "git",

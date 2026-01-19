@@ -2,13 +2,21 @@
 
 All notable changes to the CueMap TypeScript SDK will be documented in this file.
 
-## [0.5.1] - 2025-12-28
+## [0.6.0] - 2026-01-19
 
 ### Added
-- **Brain Control Flags**: Added `disableTemporalChunking`, `disableSalienceBias`, and `disableSystemsConsolidation` to SDK methods.
-- **Match Integrity**: Replaced `confidence` with `match_integrity` in all response types to align with engine heuristics.
+- **Ingestion API**: New methods `ingestUrl`, `ingestContent`, and `ingestFile` for direct content ingestion.
+- **Lexicon Management**: New methods (`lexiconWire`, `lexiconInspect`, `lexiconGraph`, `lexiconSynonyms`, `lexiconDelete`) for manual control over the engine's associative graph.
+- **Job Status**: New `jobsStatus()` method to track background ingestion progress.
+- **Brain Control Flags**: Added parameters to disable specific brain modules (`disablePatternCompletion`, `disableSalienceBias`, etc.) for deterministic debugging.
 
-## [0.5.0] - 2025-12-28
+### Changed
+- **BREAKING**: Refactored `recall` method signature. `queryText` is now the first argument, followed by `cues` and `projects`, to prioritize Natural Language Search.
+  - Old: `client.recall(cues, limit, ...)`
+  - New: `client.recall(queryText, cues, projects, limit)`
+- **Documentation**: Updated README to reflect the "Brain-Inspired" architecture and new API surface.
+
+## [0.5.0] - 2025-12-27
 
 ### Added
 - **Search Metadata**: Support for retrieving `explain` data to understand why a memory was recalled.
@@ -48,4 +56,4 @@ All notable changes to the CueMap TypeScript SDK will be documented in this file
 - Memory ingestion and basic recall routines.
 
 ---
-*Note: This version is designed to work with CueMap Rust Engine v0.5.x.*
+*Note: This version is designed to work with CueMap Rust Engine v0.6.x.*
