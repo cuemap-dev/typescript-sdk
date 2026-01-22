@@ -2,6 +2,12 @@
 
 All notable changes to the CueMap TypeScript SDK will be documented in this file.
 
+## [0.6.1] - 2026-01-21
+
+### Added
+- **Context Expansion**: New `contextExpand` method to retrieve related concepts from the cue graph.
+- **Cloud Backup Management**: New methods (`backupUpload`, `backupDownload`, `backupList`, `backupDelete`) to manage cloud snapshots programmatically.
+
 ## [0.6.0] - 2026-01-19
 
 ### Added

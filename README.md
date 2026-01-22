@@ -97,6 +97,36 @@ console.log(response.proof);
 // Cryptographic proof of context retrieval
 ```
 
+### Context Expansion (v0.6.1)
+
+Explore related concepts from the cue graph to expand a user's query.
+
+```typescript
+const response = await client.contextExpand("server hung 137", 5);
+// {
+//   "query_cues": ["server", "hung", "137"],
+//   "expansions": [
+//     { "term": "out_of_memory", "score": 25.0, "co_occurrence_count": 12 },
+//     { "term": "SIGKILL", "score": 22.0, "co_occurrence_count": 8 }
+//   ]
+// }
+```
+
+### Cloud Backup (v0.6.1)
+
+Manage project snapshots in the cloud (S3, GCS, Azure).
+
+```typescript
+// Upload current project snapshot
+await client.backupUpload("default");
+
+// Download and restore snapshot
+await client.backupDownload("default");
+
+// List available backups
+const backups = await client.backupList();
+```
+
 ### Ingestion (v0.6)
 
 Ingest content from various sources directly.

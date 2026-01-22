@@ -311,6 +311,52 @@ export class CueMap {
     );
   }
 
+  // --- Context & Backup Methods ---
+
+  /**
+   * Expand a query using the cue co-occurrence graph
+   */
+  async contextExpand(query: string, limit: number = 20, minScore?: number): Promise<any> {
+    const payload: any = { query, limit };
+    if (minScore !== undefined) {
+      payload.min_score = minScore;
+    }
+    return await this.request<any>('POST', '/context/expand', payload);
+  }
+
+  /**
+   * Upload project snapshot to cloud backup
+   */
+  async backupUpload(projectId: string): Promise<any> {
+    return await this.request<any>('POST', '/backup/upload', { project_id: projectId });
+  }
+
+  /**
+   * Download project snapshot from cloud backup
+   */
+  async backupDownload(projectId: string): Promise<any> {
+    return await this.request<any>('POST', '/backup/download', { project_id: projectId });
+  }
+
+  /**
+   * List available cloud backups
+   */
+  async backupList(): Promise<any> {
+    return await this.request<any>('GET', '/backup/list');
+  }
+
+  /**
+   * Delete a cloud backup
+   */
+  async backupDelete(projectId: string): Promise<boolean> {
+    try {
+      await this.request('DELETE', `/backup/${projectId}`);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   // --- Lexicon Methods ---
 
   /**
