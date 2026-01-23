@@ -401,13 +401,19 @@ export class CueMap {
     }
   }
 
-  // --- Ingestion Methods ---
-
   /**
-   * Ingest content from a URL
+   * Ingest content from a URL with optional recursive crawling
+   * @param url - The URL to ingest
+   * @param depth - Crawl depth (0=single page, 1+=recursive)
+   * @param sameDomainOnly - Only follow links within the same domain (default: true)
    */
-  async ingestUrl(url: string): Promise<any> {
-    return await this.request<any>('POST', '/ingest/url', { url });
+  async ingestUrl(url: string, depth: number = 0, sameDomainOnly: boolean = true): Promise<any> {
+    const payload: any = { url };
+    if (depth > 0) {
+      payload.depth = depth;
+      payload.same_domain_only = sameDomainOnly;
+    }
+    return await this.request<any>('POST', '/ingest/url', payload);
   }
 
   /**
