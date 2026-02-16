@@ -1,6 +1,6 @@
 {
   "name": "cuemap",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "description": "CueMap TypeScript SDK - High-performance temporal-associative memory",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

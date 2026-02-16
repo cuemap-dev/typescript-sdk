@@ -51,6 +51,7 @@ export interface RecallRequest {
   disable_pattern_completion?: boolean;
   disable_salience_bias?: boolean;
   disable_systems_consolidation?: boolean;
+  disable_alias_expansion?: boolean;
 }
 
 export interface ReinforceRequest {
@@ -166,7 +167,8 @@ export class CueMap {
     explain: boolean = false,
     disablePatternCompletion: boolean = false,
     disableSalienceBias: boolean = false,
-    disableSystemsConsolidation: boolean = false
+    disableSystemsConsolidation: boolean = false,
+    disableAliasExpansion: boolean = false
   ): Promise<any> {
     const payload: RecallRequest = {
       limit,
@@ -175,6 +177,7 @@ export class CueMap {
       disable_pattern_completion: disablePatternCompletion,
       disable_salience_bias: disableSalienceBias,
       disable_systems_consolidation: disableSystemsConsolidation,
+      disable_alias_expansion: disableAliasExpansion,
     };
 
     if (cues) {
@@ -289,7 +292,8 @@ export class CueMap {
     projects?: string[],
     disablePatternCompletion: boolean = false,
     disableSalienceBias: boolean = false,
-    disableSystemsConsolidation: boolean = false
+    disableSystemsConsolidation: boolean = false,
+    disableAliasExpansion: boolean = false
   ): Promise<RecallGroundedResponse> {
     const payload: RecallGroundedRequest = {
       query_text: query,
@@ -298,6 +302,7 @@ export class CueMap {
       disable_pattern_completion: disablePatternCompletion,
       disable_salience_bias: disableSalienceBias,
       disable_systems_consolidation: disableSystemsConsolidation,
+      disable_alias_expansion: disableAliasExpansion,
     };
 
     if (projects) {
@@ -507,6 +512,7 @@ export interface RecallGroundedRequest {
   disable_pattern_completion?: boolean;
   disable_salience_bias?: boolean;
   disable_systems_consolidation?: boolean;
+  disable_alias_expansion?: boolean;
 }
 
 export interface RecallGroundedResponse {
