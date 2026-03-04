@@ -44,6 +44,7 @@ export interface RecallRequest {
   cues?: string[];
   query_text?: string;
   limit?: number;
+  depth?: number;
   auto_reinforce?: boolean;
   min_intersection?: number;
   projects?: string[];
@@ -162,6 +163,7 @@ export class CueMap {
     cues?: string[],
     projects?: string[],
     limit: number = 10,
+    depth: number = 1,
     autoReinforce: boolean = false,
     minIntersection?: number,
     explain: boolean = false,
@@ -172,6 +174,7 @@ export class CueMap {
   ): Promise<any> {
     const payload: RecallRequest = {
       limit,
+      depth,
       auto_reinforce: autoReinforce,
       explain,
       disable_pattern_completion: disablePatternCompletion,
@@ -290,6 +293,8 @@ export class CueMap {
     tokenBudget: number = 500,
     limit: number = 10,
     projects?: string[],
+    autoReinforce: boolean = true,
+    minIntersection?: number,
     disablePatternCompletion: boolean = false,
     disableSalienceBias: boolean = false,
     disableSystemsConsolidation: boolean = false,
@@ -299,6 +304,7 @@ export class CueMap {
       query_text: query,
       token_budget: tokenBudget,
       limit,
+      auto_reinforce: autoReinforce,
       disable_pattern_completion: disablePatternCompletion,
       disable_salience_bias: disableSalienceBias,
       disable_systems_consolidation: disableSystemsConsolidation,
@@ -307,6 +313,10 @@ export class CueMap {
 
     if (projects) {
       payload.projects = projects;
+    }
+
+    if (minIntersection !== undefined) {
+      payload.min_intersection = minIntersection;
     }
 
     return await this.request<RecallGroundedResponse>(
@@ -508,6 +518,8 @@ export interface RecallGroundedRequest {
   query_text: string;
   token_budget: number;
   limit?: number;
+  auto_reinforce?: boolean;
+  min_intersection?: number;
   projects?: string[];
   disable_pattern_completion?: boolean;
   disable_salience_bias?: boolean;
@@ -543,6 +555,8 @@ export class CueMapGroundingRetriever {
     tokenBudget: number = 500,
     limit: number = 10,
     projects?: string[],
+    autoReinforce: boolean = true,
+    minIntersection?: number,
     disablePatternCompletion: boolean = false
   ): Promise<{
     verified_context_block: string;
@@ -554,6 +568,8 @@ export class CueMapGroundingRetriever {
       tokenBudget,
       limit,
       projects,
+      autoReinforce,
+      minIntersection,
       disablePatternCompletion
     );
 

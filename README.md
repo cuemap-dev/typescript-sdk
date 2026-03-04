@@ -72,6 +72,7 @@ const results = await client.recall(
   undefined,    // cues
   undefined,    // projects
   10,           // limit
+  2,            // depth
   false,        // auto_reinforce
   undefined,    // min_intersection
   true          // explain
@@ -179,6 +180,7 @@ const results = await client.recall(
   undefined,
   undefined,
   10,
+  1,
   false,
   undefined,
   false, // explain
