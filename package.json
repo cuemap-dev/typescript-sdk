@@ -1,6 +1,6 @@
 {
   "name": "cuemap",
-  "version": "0.6.4",
+  "version": "0.6.6",
   "description": "CueMap TypeScript SDK - High-performance temporal-associative memory",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -22,13 +22,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/cuemap-dev/sdks.git",
-    "directory": "typescript"
+    "url": "https://github.com/cuemap-dev/typescript-sdk.git"
   },
   "bugs": {
-    "url": "https://github.com/cuemap-dev/sdks/issues"
+    "url": "https://github.com/cuemap-dev/typescript-sdk/issues"
   },
-  "homepage": "https://github.com/cuemap-dev/sdks/tree/main/typescript#readme",
+  "homepage": "https://github.com/cuemap-dev/typescript-sdk/tree/main#readme",
   "files": [
     "dist",
     "README.md",

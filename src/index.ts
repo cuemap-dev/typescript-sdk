@@ -216,6 +216,20 @@ export class CueMap {
   }
 
   /**
+   * Create a new project (multi-tenant only)
+   */
+  async createProject(projectId: string): Promise<any> {
+    return await this.request<any>('POST', '/projects', { project_id: projectId });
+  }
+
+  /**
+   * Set the watch directory for a project
+   */
+  async setProjectWatchDir(projectId: string, watchDir: string): Promise<any> {
+    return await this.request<any>('POST', `/projects/${projectId}/watch-dir`, { watch_dir: watchDir });
+  }
+
+  /**
    * Delete a project (multi-tenant only)
    */
   async deleteProject(projectId: string): Promise<boolean> {
@@ -477,10 +491,37 @@ export class CueMap {
   // --- Job Status ---
 
   /**
-   * Get background job status for the current project
+   * Get background job status for a project or globally
    */
-  async jobsStatus(): Promise<any> {
-    return await this.request<any>('GET', '/jobs/status');
+  async jobsStatus(projectId?: string): Promise<any> {
+    const headers = this.getHeaders();
+    if (projectId) {
+      headers['X-Project-ID'] = projectId;
+    }
+
+    // Using a direct fetch instead of `this.request` because `request` uses `this.getHeaders()` internally overriding this one unless we pass headers down.
+    // Let's modify the helper to accept custom headers, or just use fetch here:
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+    try {
+      const response = await fetch(`${this.url}/jobs/status`, {
+        method: 'GET',
+        headers: headers,
+        signal: controller.signal as any,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new CueMapError(`Request failed: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      clearTimeout(timeoutId);
+      throw new CueMapError(`Request failed: ${error}`);
+    }
   }
 }
 
