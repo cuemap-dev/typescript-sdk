@@ -10,24 +10,34 @@ export interface CueMapConfig {
   timeout?: number;
 }
 
+export type MemoryId = number | string;
+export type RecallExpansionMode = 'off' | 'auto' | 'force';
+export type TextSegmenterMode = 'sentence_window' | 'logical_block';
+
 export interface Memory {
-  id: string;
-  content: string;
+  id: MemoryId;
+  content: string | number[];
+  source_key?: string | null;
   cues: string[];
   metadata: Record<string, any>;
-  created_at: number;
-  last_accessed: number;
+  created_at?: number;
+  last_accessed?: number;
+  disk_backed?: boolean;
+  scoring_features?: Record<string, any>;
+  stats?: Record<string, any>;
 }
 
 export interface RecallResult {
-  memory_id: string;
+  memory_id: MemoryId;
   content: string;
   score: number;
   intersection_count: number;
   recency_score: number;
   reinforcement_score: number;
-  salience: number;
+  salience_score: number;
+  salience?: number;
   match_integrity: number;
+  created_at?: number;
   structural_cues: string[];
   metadata: Record<string, any>;
   explain?: Record<string, any>;
@@ -35,28 +45,85 @@ export interface RecallResult {
 
 export interface AddMemoryRequest {
   content: string;
-  cues: string[];
+  cues?: string[];
+  source_key?: string;
   metadata?: Record<string, any>;
+  cuepacks?: string[];
   disable_temporal_chunking?: boolean;
+  async_ingest?: boolean;
+  minimal_response?: boolean;
+  trace_timing?: boolean;
+}
+
+export interface AddMemoryOptions {
+  sourceKey?: string;
+  cuepacks?: string[];
+  asyncIngest?: boolean;
+  minimalResponse?: boolean;
+  traceTiming?: boolean;
 }
 
 export interface RecallRequest {
   cues?: string[];
   query_text?: string;
+  query_time?: string;
   limit?: number;
   depth?: number;
   auto_reinforce?: boolean;
   min_intersection?: number;
   projects?: string[];
   explain?: boolean;
-  disable_pattern_completion?: boolean;
+  trace_timing?: boolean;
   disable_salience_bias?: boolean;
-  disable_systems_consolidation?: boolean;
   disable_alias_expansion?: boolean;
+  expansion_depth?: number;
+  cuepacks?: string[];
+  parent_fusion?: RecallExpansionMode;
+  parent_fusion_limit?: number;
+  parent_fusion_min_chunks?: number;
+  ordered_reconstruction?: RecallExpansionMode;
+  ordered_reconstruction_limit?: number;
+  ordered_session_scan_limit?: number;
+  ordered_max_sessions?: number;
+  evidence_coverage?: RecallExpansionMode;
+  evidence_coverage_limit?: number;
+  evidence_coverage_session_scan_limit?: number;
+  evidence_coverage_max_sessions?: number;
+  disable_cuebridge_artifacts?: boolean;
+  cuebridge_gap_limit?: number;
+  /** @deprecated Removed from the v0.7 engine. Accepted for source compatibility but not sent. */
+  disable_pattern_completion?: boolean;
+  /** @deprecated Removed from the v0.7 engine. Accepted for source compatibility but not sent. */
+  disable_systems_consolidation?: boolean;
 }
 
 export interface ReinforceRequest {
   cues: string[];
+}
+
+export interface IngestContentOptions {
+  sourceKey?: string;
+  metadata?: Record<string, any>;
+  structuralCues?: string[];
+  segmenter?: TextSegmenterMode;
+  segmentWindowSize?: number;
+  segmentOverlap?: number;
+  segmentMinChunkChars?: number;
+  segmentMaxChunkChars?: number;
+}
+
+export interface DebugAnalyzeTextOptions {
+  queryTime?: string;
+  metadata?: Record<string, any>;
+  existingCues?: string[];
+  availableCues?: string[];
+  cuepacks?: string[];
+  filename?: string;
+  segmenter?: TextSegmenterMode;
+  segmentWindowSize?: number;
+  segmentOverlap?: number;
+  segmentMinChunkChars?: number;
+  segmentMaxChunkChars?: number;
 }
 
 export class CueMapError extends Error {
@@ -93,6 +160,21 @@ export class CueMap {
     }
 
     return headers;
+  }
+
+  private cleanBody<T extends Record<string, any>>(body: T): Partial<T> {
+    return Object.fromEntries(
+      Object.entries(body).filter(([, value]) => value !== undefined)
+    ) as Partial<T>;
+  }
+
+  private normalizeRecallPayload(payload: RecallRequest): RecallRequest {
+    const {
+      disable_pattern_completion: _disablePatternCompletion,
+      disable_systems_consolidation: _disableSystemsConsolidation,
+      ...rest
+    } = payload;
+    return this.cleanBody(rest) as RecallRequest;
   }
 
   private async request<T>(
@@ -135,16 +217,46 @@ export class CueMap {
    */
   async add(
     content: string,
-    cues: string[],
+    cues: string[] = [],
     metadata?: Record<string, any>,
-    disableTemporalChunking: boolean = false
-  ): Promise<string> {
-    const response = await this.request<{ id: string }>(
+    disableTemporalChunking: boolean = false,
+    options: AddMemoryOptions = {}
+  ): Promise<MemoryId> {
+    const response = await this.request<{ id: MemoryId }>(
       'POST',
       '/memories',
-      { content, cues, metadata: metadata || {}, disable_temporal_chunking: disableTemporalChunking }
+      this.cleanBody({
+        content,
+        cues,
+        metadata,
+        disable_temporal_chunking: disableTemporalChunking,
+        source_key: options.sourceKey,
+        cuepacks: options.cuepacks,
+        async_ingest: options.asyncIngest,
+        minimal_response: options.minimalResponse,
+        trace_timing: options.traceTiming,
+      })
     );
     return response.id;
+  }
+
+  /**
+   * Add multiple memories in one request
+   */
+  async addBatch(
+    memories: AddMemoryRequest[],
+    minimalResponse: boolean = false,
+    traceTiming: boolean = false
+  ): Promise<any> {
+    return await this.request<any>(
+      'POST',
+      '/memories/batch',
+      {
+        memories,
+        minimal_response: minimalResponse,
+        trace_timing: traceTiming,
+      }
+    );
   }
 
   /**
@@ -158,8 +270,24 @@ export class CueMap {
    * @param projects - List of project IDs for cross-domain queries
    * @param explain - Include recall explanation in results
    */
+  async recall(options: RecallRequest): Promise<any>;
   async recall(
     queryText?: string,
+    cues?: string[],
+    projects?: string[],
+    limit?: number,
+    depth?: number,
+    autoReinforce?: boolean,
+    minIntersection?: number,
+    explain?: boolean,
+    disablePatternCompletion?: boolean,
+    disableSalienceBias?: boolean,
+    disableSystemsConsolidation?: boolean,
+    disableAliasExpansion?: boolean,
+    options?: Partial<RecallRequest>
+  ): Promise<any>;
+  async recall(
+    queryTextOrOptions?: string | RecallRequest,
     cues?: string[],
     projects?: string[],
     limit: number = 10,
@@ -167,42 +295,33 @@ export class CueMap {
     autoReinforce: boolean = false,
     minIntersection?: number,
     explain: boolean = false,
-    disablePatternCompletion: boolean = false,
+    _disablePatternCompletion: boolean = false,
     disableSalienceBias: boolean = false,
-    disableSystemsConsolidation: boolean = false,
-    disableAliasExpansion: boolean = false
+    _disableSystemsConsolidation: boolean = false,
+    disableAliasExpansion: boolean = true,
+    options: Partial<RecallRequest> = {}
   ): Promise<any> {
-    const payload: RecallRequest = {
-      limit,
-      depth,
-      auto_reinforce: autoReinforce,
-      explain,
-      disable_pattern_completion: disablePatternCompletion,
-      disable_salience_bias: disableSalienceBias,
-      disable_systems_consolidation: disableSystemsConsolidation,
-      disable_alias_expansion: disableAliasExpansion,
-    };
-
-    if (cues) {
-      payload.cues = cues;
-    }
-
-    if (queryText) {
-      payload.query_text = queryText;
-    }
-
-    if (minIntersection !== undefined) {
-      payload.min_intersection = minIntersection;
-    }
-
-    if (projects !== undefined) {
-      payload.projects = projects;
-    }
+    const payload: RecallRequest =
+      typeof queryTextOrOptions === 'object' && queryTextOrOptions !== null
+        ? queryTextOrOptions
+        : {
+            ...options,
+            query_text: queryTextOrOptions,
+            cues,
+            projects,
+            limit,
+            depth,
+            auto_reinforce: autoReinforce,
+            min_intersection: minIntersection,
+            explain,
+            disable_salience_bias: disableSalienceBias,
+            disable_alias_expansion: disableAliasExpansion,
+          };
 
     const response = await this.request<any>(
       'POST',
       '/recall',
-      payload
+      this.normalizeRecallPayload(payload)
     );
 
     return response;
@@ -225,8 +344,21 @@ export class CueMap {
   /**
    * Set the watch directory for a project
    */
-  async setProjectWatchDir(projectId: string, watchDir: string): Promise<any> {
-    return await this.request<any>('POST', `/projects/${projectId}/watch-dir`, { watch_dir: watchDir });
+  async setProjectWatchDir(
+    projectId: string,
+    watchDir: string,
+    ignoredPatterns?: string[],
+    ignoredExtensions?: string[]
+  ): Promise<any> {
+    return await this.request<any>(
+      'POST',
+      `/projects/${projectId}/watch-dir`,
+      this.cleanBody({
+        watch_dir: watchDir,
+        ignored_patterns: ignoredPatterns,
+        ignored_extensions: ignoredExtensions,
+      })
+    );
   }
 
   /**
@@ -239,6 +371,43 @@ export class CueMap {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Get CueBridge artifact summary for a project
+   */
+  async projectArtifacts(projectId: string): Promise<any> {
+    return await this.request<any>('GET', `/projects/${projectId}/artifacts`);
+  }
+
+  /**
+   * Reload CueBridge artifacts for a project
+   */
+  async reloadProjectArtifacts(projectId: string): Promise<any> {
+    return await this.request<any>('POST', `/projects/${projectId}/artifacts`);
+  }
+
+  /**
+   * Export project memories with cursor pagination
+   */
+  async exportProject(
+    projectId: string,
+    options: {
+      cursor?: MemoryId;
+      limit?: number;
+      includeContent?: boolean;
+      includeCues?: boolean;
+      includeMetadata?: boolean;
+    } = {}
+  ): Promise<any> {
+    const params = new URLSearchParams();
+    if (options.cursor !== undefined) params.set('cursor', String(options.cursor));
+    if (options.limit !== undefined) params.set('limit', String(options.limit));
+    if (options.includeContent !== undefined) params.set('include_content', String(options.includeContent));
+    if (options.includeCues !== undefined) params.set('include_cues', String(options.includeCues));
+    if (options.includeMetadata !== undefined) params.set('include_metadata', String(options.includeMetadata));
+    const suffix = params.toString();
+    return await this.request<any>('GET', `/projects/${projectId}/export${suffix ? `?${suffix}` : ''}`);
   }
 
   /**
@@ -309,19 +478,17 @@ export class CueMap {
     projects?: string[],
     autoReinforce: boolean = true,
     minIntersection?: number,
-    disablePatternCompletion: boolean = false,
     disableSalienceBias: boolean = false,
-    disableSystemsConsolidation: boolean = false,
-    disableAliasExpansion: boolean = false
+    disableAliasExpansion: boolean = true,
+    options: Partial<RecallGroundedRequest> = {}
   ): Promise<RecallGroundedResponse> {
     const payload: RecallGroundedRequest = {
+      ...options,
       query_text: query,
       token_budget: tokenBudget,
       limit,
       auto_reinforce: autoReinforce,
-      disable_pattern_completion: disablePatternCompletion,
       disable_salience_bias: disableSalienceBias,
-      disable_systems_consolidation: disableSystemsConsolidation,
       disable_alias_expansion: disableAliasExpansion,
     };
 
@@ -336,22 +503,11 @@ export class CueMap {
     return await this.request<RecallGroundedResponse>(
       'POST',
       '/recall/grounded',
-      payload
+      this.normalizeRecallPayload(payload)
     );
   }
 
-  // --- Context & Backup Methods ---
-
-  /**
-   * Expand a query using the cue co-occurrence graph
-   */
-  async contextExpand(query: string, limit: number = 20, minScore?: number): Promise<any> {
-    const payload: any = { query, limit };
-    if (minScore !== undefined) {
-      payload.min_score = minScore;
-    }
-    return await this.request<any>('POST', '/context/expand', payload);
-  }
+  // --- Backup Methods ---
 
   /**
    * Upload project snapshot to cloud backup
@@ -411,14 +567,6 @@ export class CueMap {
   }
 
   /**
-   * Get WordNet synonyms and graph suggestions for a cue
-   */
-  async lexiconSynonyms(cue: string): Promise<any> {
-    const encoded = encodeURIComponent(cue);
-    return await this.request<any>('GET', `/lexicon/synonyms/${encoded}`);
-  }
-
-  /**
    * Delete a Lexicon entry
    */
   async lexiconDelete(memoryId: string): Promise<boolean> {
@@ -448,8 +596,62 @@ export class CueMap {
   /**
    * Ingest raw content
    */
-  async ingestContent(content: string, filename: string = "content.txt"): Promise<any> {
-    return await this.request<any>('POST', '/ingest/content', { content, filename });
+  async ingestContent(
+    content: string,
+    filename: string = "content.txt",
+    options: IngestContentOptions = {}
+  ): Promise<any> {
+    return await this.request<any>(
+      'POST',
+      '/ingest/content',
+      this.cleanBody({
+        content,
+        filename,
+        source_key: options.sourceKey,
+        metadata: options.metadata,
+        structural_cues: options.structuralCues,
+        segmenter: options.segmenter,
+        segment_window_size: options.segmentWindowSize,
+        segment_overlap: options.segmentOverlap,
+        segment_min_chunk_chars: options.segmentMinChunkChars,
+        segment_max_chunk_chars: options.segmentMaxChunkChars,
+      })
+    );
+  }
+
+  /**
+   * Recall directly from a URL or web search result set
+   */
+  async recallWeb(query: string, url?: string, persist: boolean = false): Promise<any> {
+    return await this.request<any>(
+      'POST',
+      '/recall/web',
+      this.cleanBody({ query, url, persist })
+    );
+  }
+
+  /**
+   * Analyze v0.7 cue extraction, query intent, and chunking for text
+   */
+  async debugAnalyzeText(text: string, options: DebugAnalyzeTextOptions = {}): Promise<any> {
+    return await this.request<any>(
+      'POST',
+      '/debug/analyze-text',
+      this.cleanBody({
+        text,
+        query_time: options.queryTime,
+        metadata: options.metadata,
+        existing_cues: options.existingCues,
+        available_cues: options.availableCues,
+        cuepacks: options.cuepacks,
+        filename: options.filename,
+        segmenter: options.segmenter,
+        segment_window_size: options.segmentWindowSize,
+        segment_overlap: options.segmentOverlap,
+        segment_min_chunk_chars: options.segmentMinChunkChars,
+        segment_max_chunk_chars: options.segmentMaxChunkChars,
+      })
+    );
   }
 
   /**
@@ -526,7 +728,7 @@ export class CueMap {
 }
 
 export interface SelectedItem {
-  memory_id: string;
+  memory_id: MemoryId;
   content: string;
   score: number;
   intersection_count: number;
@@ -540,7 +742,7 @@ export interface SelectedItem {
 }
 
 export interface ExcludedItem {
-  memory_id: string;
+  memory_id: MemoryId;
   score: number;
   reason: string;
 }
@@ -562,16 +764,23 @@ export interface RecallGroundedRequest {
   auto_reinforce?: boolean;
   min_intersection?: number;
   projects?: string[];
-  disable_pattern_completion?: boolean;
   disable_salience_bias?: boolean;
-  disable_systems_consolidation?: boolean;
   disable_alias_expansion?: boolean;
+  expansion_depth?: number;
+  cuepacks?: string[];
+  /** @deprecated Removed from the v0.7 engine. Accepted for source compatibility but not sent. */
+  disable_pattern_completion?: boolean;
+  /** @deprecated Removed from the v0.7 engine. Accepted for source compatibility but not sent. */
+  disable_systems_consolidation?: boolean;
 }
 
 export interface RecallGroundedResponse {
   verified_context: string;
   proof: GroundingProof;
   engine_latency_ms: number;
+  signature_alg?: string;
+  signature?: string;
+  public_key?: string | null;
 }
 
 /**
@@ -598,7 +807,7 @@ export class CueMapGroundingRetriever {
     projects?: string[],
     autoReinforce: boolean = true,
     minIntersection?: number,
-    disablePatternCompletion: boolean = false
+    options: Partial<RecallGroundedRequest> = {}
   ): Promise<{
     verified_context_block: string;
     grounding_proof: GroundingProof;
@@ -611,7 +820,9 @@ export class CueMapGroundingRetriever {
       projects,
       autoReinforce,
       minIntersection,
-      disablePatternCompletion
+      options.disable_salience_bias ?? false,
+      options.disable_alias_expansion ?? true,
+      options
     );
 
     return {

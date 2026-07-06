@@ -1,16 +1,22 @@
 # CueMap TypeScript SDK
 
-**High-performance temporal-associative memory store** that mimics the brain's recall mechanism.
+**High-performance temporal-associative memory store** designed for dynamic contextual retrieval.
 
 ## Overview
 
-CueMap implements a **Continuous Gradient Algorithm** inspired by biological memory:
+CueMap implements a **Continuous Gradient Algorithm** optimized for associative data structures:
 
 1.  **Intersection (Context Filter)**: Triangulates relevant memories by overlapping cues
-2.  **Pattern Completion (Associative Recall)**: Automatically infers missing cues from co-occurrence history, enabling recall from partial inputs.
-3.  **Recency & Salience (Signal Dynamics)**: Balances fresh data with salient, high-signal events prioritized by the Amygdala-inspired salience module.
-4.  **Reinforcement (Hebbian Learning)**: Frequently accessed memories gain signal strength, staying "front of mind".
-5.  **Autonomous Consolidation**: Periodically merges overlapping memories into summaries, mimicking systems consolidation.
+2.  **CuePack-Guided Intent Routing**: Uses compiled deterministic rules to add structural facets and weighted intent cues without runtime model calls.
+3.  **Recency & Salience (Signal Dynamics)**: Balances fresh data with salient, high-signal events prioritized by an adaptive impact scoring module.
+4.  **Reinforcement (Access-based Learning)**: Frequently accessed memories gain signal strength, remaining highly accessible even as they age.
+5.  **Deterministic Facets & Intent Routing**: Extracts synchronous source, evidence, temporal, type, and entity facets, then uses sparse intent cues and reranking during recall.
+
+As of v0.7.0, CueMap's core path is deterministic and embedding-free. GloVe/Ollama cue generation, WordNet/POS expansion, semantic bridges, pattern completion, external lexicon graphs, context expansion/speculation endpoints, and autonomous consolidation have been removed from the core engine.
+
+v0.7.0 also uses numeric per-project memory IDs everywhere. If callers need deterministic upsert/dedupe identity, pass `source_key`; memory IDs remain compact runtime addresses.
+
+Use this SDK to talk to the Rust engine from TypeScript and JavaScript applications.
 
 ## Installation
 
@@ -33,18 +39,16 @@ import CueMap from 'cuemap';
 
 const client = new CueMap();
 
-// Add a memory (auto-cue generation by default using internal Semantic Engine)
+// Add a memory with deterministic cue extraction
 await client.add("The server password is abc123", []);
 
-// Recall by natural language (resolves via Lexicon)
-const results = await client.recall(
-  "server credentials", // query text
-  undefined, // cues
-  undefined, // projects
-  10 // limit
-);
+// Recall by natural language
+const response = await client.recall({
+  query_text: "server credentials",
+  limit: 10,
+});
 
-console.log(results[0].content);
+console.log(response.results[0].content);
 // Output: "The server password is abc123"
 ```
 
@@ -59,27 +63,39 @@ await client.add(
   ["meeting", "john", "calendar"]
 );
 
-// Auto-cues (Semantic Engine)
+// Deterministic cues are derived when cues are omitted
 await client.add("The payments service is down due to a timeout", []);
 ```
 
 ### Recall Memories
 
 ```typescript
-// Natural Language Search
-const results = await client.recall(
-  "payments failure", // query_text
-  undefined,    // cues
-  undefined,    // projects
-  10,           // limit
-  2,            // depth
-  false,        // auto_reinforce
-  undefined,    // min_intersection
-  true          // explain
-);
+// Natural language search
+const response = await client.recall({
+  query_text: "payments failure",
+  limit: 10,
+  depth: 2,
+  explain: true,
+});
 
-console.log(results[0].explain);
-// Shows normalized cues, expanded synonyms, etc.
+console.log(response.results[0].explain);
+// Shows normalized cues, intent cues, and reranking details.
+```
+
+### v0.7 Recall Controls
+
+CueMap v0.7 adds temporal query intent, CueBridge artifact expansion, and optional reconstruction passes for longer conversational/codebase context.
+
+```typescript
+const response = await client.recall({
+  query_text: "what did we decide about auth retries?",
+  query_time: "2026-07-06",
+  ordered_reconstruction: "auto",
+  evidence_coverage: "auto",
+  parent_fusion: "auto",
+  cuepacks: ["default"],
+  explain: true,
+});
 ```
 
 ### Grounded Recall (Hallucination Guardrails)
@@ -96,21 +112,6 @@ console.log(response.verified_context);
 // [VERIFIED CONTEXT] ...
 console.log(response.proof);
 // Cryptographic proof of context retrieval
-```
-
-### Context Expansion (v0.6.1)
-
-Explore related concepts from the cue graph to expand a user's query.
-
-```typescript
-const response = await client.contextExpand("server hung 137", 5);
-// {
-//   "query_cues": ["server", "hung", "137"],
-//   "expansions": [
-//     { "term": "out_of_memory", "score": 25.0, "co_occurrence_count": 12 },
-//     { "term": "SIGKILL", "score": 22.0, "co_occurrence_count": 8 }
-//   ]
-// }
 ```
 
 ### Cloud Backup (v0.6.1)
@@ -140,8 +141,12 @@ await client.ingestUrl("https://example.com/docs");
 // Requires a File or Blob object (browser) or similar in Node
 await client.ingestFile(myFileObject);
 
-// Ingest Raw Content
-await client.ingestContent("Raw text content...", "notes.txt");
+// Ingest Raw Content with v0.7 logical-block chunking
+await client.ingestContent("Raw text content...", "notes.md", {
+  sourceKey: "docs:notes",
+  structuralCues: ["source_type:docs"],
+  segmenter: "logical_block",
+});
 ```
 
 ### Lexicon Management (v0.6)
@@ -157,8 +162,6 @@ console.log("Triggers:", data.incoming);
 // Manually wire a token to a concept
 await client.lexiconWire("stripe", "service:payment");
 
-// Get synonyms via WordNet
-const synonyms = await client.lexiconSynonyms("payment");
 ```
 
 ### Job Status (v0.6)
@@ -175,19 +178,12 @@ console.log(`Ingested: ${status.writes_completed} / ${status.writes_total}`);
 Disable specific brain modules for deterministic debugging.
 
 ```typescript
-const results = await client.recall(
-  "urgent issue", // query
-  undefined,
-  undefined,
-  10,
-  1,
-  false,
-  undefined,
-  false, // explain
-  true,  // disablePatternCompletion
-  true,  // disableSalienceBias
-  true   // disableSystemsConsolidation
-);
+const response = await client.recall({
+  query_text: "urgent issue",
+  disable_salience_bias: true,
+  disable_alias_expansion: true,
+  disable_cuebridge_artifacts: true,
+});
 ```
 
 ## Performance

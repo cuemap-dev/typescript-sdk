@@ -2,6 +2,20 @@
 
 All notable changes to the CueMap TypeScript SDK will be documented in this file.
 
+## [0.7.0] - 2026-07-06
+
+### Added
+- **v0.7 Recall Controls**: Added object-style recall requests with `query_time`, `trace_timing`, `expansion_depth`, `cuepacks`, parent fusion, ordered reconstruction, evidence coverage, and CueBridge artifact controls.
+- **v0.7 Ingestion Controls**: Added `sourceKey`, `structuralCues`, and segmenter configuration for raw content ingestion.
+- **Batch Add API**: Added `addBatch()` for `/memories/batch`.
+- **Project Artifact APIs**: Added helpers for project artifact summary/reload, project export, and watch directory ignored patterns/extensions.
+- **Debug Analysis API**: Added `debugAnalyzeText()` for v0.7 cue extraction and chunking inspection.
+
+### Changed
+- **Memory IDs**: SDK types now accept numeric v0.7 memory IDs.
+- **Alias Expansion Default**: `disableAliasExpansion` now defaults to `true`, matching the Rust engine default.
+- **Removed Stale Endpoints**: Removed `contextExpand()` and `lexiconSynonyms()` because the v0.7 Rust engine no longer exposes those routes.
+
 ## [0.6.4] - 2026-03-04
 
 ### Added
@@ -72,4 +86,4 @@ All notable changes to the CueMap TypeScript SDK will be documented in this file
 - Memory ingestion and basic recall routines.
 
 ---
-*Note: This version is designed to work with CueMap Rust Engine v0.6.x.*
+*Note: Version 0.7.0 is designed to work with CueMap Rust Engine v0.7.x.*
