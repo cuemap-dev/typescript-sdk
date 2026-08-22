@@ -2,6 +2,20 @@
 
 All notable changes to the CueMap TypeScript SDK will be documented in this file.
 
+## [0.7.2] - 2026-07-18
+
+### Added
+- Repository directory previews that enumerate supported top-level paths without ingesting file contents.
+- Persistent include-path support plus helpers to read and update a project's saved filesystem ingestion scope.
+- Embedded-engine stdout/stderr capture in `~/.cuemap/server.log`, with `CUEMAP_LOG_PATH` and `logPath` overrides.
+- Semantic recall types now match the Rust engine's `lexical`, `semantic`, and `hybrid` modes, including optional precomputed query and memory embeddings.
+- Added one-vector-per-produced-chunk `embeddings` for raw-content ingestion.
+- Added `classifyIntent()` and typed query/memory intent responses.
+- Updated release documentation for the qint8 MiniLM-L3 default and q4 MiniLM-L3 edge profile.
+
+### Removed
+- Removed CuePack request fields because CuePacks are no longer part of the v0.7.2 Rust API.
+
 ## [0.7.1] - 2026-07-17
 
 ### Changed
