@@ -7,14 +7,14 @@
 CueMap implements a **Continuous Gradient Algorithm** optimized for associative data structures:
 
 1.  **Intersection (Context Filter)**: Triangulates relevant memories by overlapping cues
-2.  **CuePack-Guided Intent Routing**: Uses compiled deterministic rules to add structural facets and weighted intent cues without runtime model calls.
+2.  **Local Semantic and Intent Reranking**: Uses bundled qint8 MiniLM-L3 by default, or q4 MiniLM-L3 with the edge profile.
 3.  **Recency & Salience (Signal Dynamics)**: Balances fresh data with salient, high-signal events prioritized by an adaptive impact scoring module.
 4.  **Reinforcement (Access-based Learning)**: Frequently accessed memories gain signal strength, remaining highly accessible even as they age.
 5.  **Deterministic Facets & Intent Routing**: Extracts synchronous source, evidence, temporal, type, and entity facets, then uses sparse intent cues and reranking during recall.
 
-As of v0.7.0, CueMap's core path is deterministic and embedding-free. GloVe/Ollama cue generation, WordNet/POS expansion, semantic bridges, pattern completion, external lexicon graphs, context expansion/speculation endpoints, and autonomous consolidation have been removed from the core engine.
+As of v0.7.2, CueMap keeps deterministic lexical candidate discovery and adds bundled qint8 `all-MiniLM-L3-v2` for bounded hybrid semantic and intent reranking. The `edge` engine profile uses a q4 build of the same model. No runtime model download is required, and callers can disable the encoder or provide their own vectors.
 
-v0.7.0 also uses numeric per-project memory IDs everywhere. If callers need deterministic upsert/dedupe identity, pass `source_key`; memory IDs remain compact runtime addresses.
+v0.7.2 also uses numeric per-project memory IDs everywhere. If callers need deterministic upsert/dedupe identity, pass `source_key`; memory IDs remain compact runtime addresses.
 
 Use this SDK to talk to the Rust engine from TypeScript and JavaScript applications.
 
@@ -82,9 +82,9 @@ console.log(response.results[0].explain);
 // Shows normalized cues, intent cues, and reranking details.
 ```
 
-### v0.7 Recall Controls
+### v0.7.2 Recall Controls
 
-CueMap v0.7 adds temporal query intent, CueBridge artifact expansion, and optional reconstruction passes for longer conversational/codebase context.
+CueMap v0.7.2 adds local semantic query signals alongside temporal query intent and the optional reconstruction passes for longer conversational/codebase context.
 
 ```typescript
 const response = await client.recall({
@@ -93,7 +93,7 @@ const response = await client.recall({
   ordered_reconstruction: "auto",
   evidence_coverage: "auto",
   parent_fusion: "auto",
-  cuepacks: ["default"],
+  semantic_mode: "hybrid",
   explain: true,
 });
 ```
@@ -112,6 +112,18 @@ console.log(response.verified_context);
 // [VERIFIED CONTEXT] ...
 console.log(response.proof);
 // Cryptographic proof of context retrieval
+```
+
+For a controlled semantic comparison, use `semantic_mode: "lexical"`. Use `"semantic"` for vector candidate discovery or `"hybrid"` (the engine default) to rerank lexical candidates with the configured local encoder. `query_embedding` can supply a precomputed vector when the application owns the embedding provider.
+
+Classify query or memory intent with the same local model. Returned scores are ranking signals, not calibrated probabilities:
+
+```typescript
+const classification = await client.classifyIntent(
+  "What did we decide about auth retries?",
+  "query"
+);
+console.log(classification.primary_intent, classification.recall_eligible);
 ```
 
 ### Cloud Backup (v0.6.1)
@@ -149,6 +161,26 @@ await client.ingestContent("Raw text content...", "notes.md", {
 });
 ```
 
+When an application owns chunk vectors, pass exactly one vector per produced chunk with `embeddings: [[...], [...]]`.
+
+Preview and apply a persistent repository ingestion scope:
+
+```typescript
+const preview = await client.previewDirectory("/work/my-app");
+
+await client.setProjectWatchDir(
+  "repo-my-app-a1b2c3d4e5",
+  "/work/my-app",
+  ["generated/**"],
+  ["map"],
+  ["src", "README.md"]
+);
+```
+
+New and changed supported files are ingested only when they remain inside `includedPaths` and pass discovered ignore files plus configured exclusions. Use `getProjectWatchDir(projectId)` to read the persisted scope.
+
+When `EmbeddedCueMap` starts a local engine, its stdout and stderr are appended to `~/.cuemap/server.log` so `cuemap logs` reports the live embedded instance. Set `CUEMAP_LOG_PATH` or pass `logPath` to use another file; pass `logPath: false` only when log capture is intentionally disabled.
+
 ### Lexicon Management (v0.6)
 
 Inspect and wire the brain's associations manually.
@@ -171,25 +203,8 @@ Check the progress of background ingestion tasks.
 ```typescript
 const status = await client.jobsStatus();
 console.log(`Ingested: ${status.writes_completed} / ${status.writes_total}`);
+console.log(`Intent ready: ${status.intent_ready ?? false}`);
 ```
-
-### Advanced Brain Control
-
-Disable specific brain modules for deterministic debugging.
-
-```typescript
-const response = await client.recall({
-  query_text: "urgent issue",
-  disable_salience_bias: true,
-  disable_alias_expansion: true,
-  disable_cuebridge_artifacts: true,
-});
-```
-
-## Performance
-
-- **Write Latency**: ~2ms (O(1) complexity)
-- **Read Latency**: ~3ms (P99, 1M memories)
 
 ## License
 

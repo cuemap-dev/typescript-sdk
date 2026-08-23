@@ -12,7 +12,23 @@ export interface CueMapConfig {
 
 export type MemoryId = number | string;
 export type RecallExpansionMode = 'off' | 'auto' | 'force';
+export type SemanticRecallMode = 'lexical' | 'semantic' | 'hybrid';
 export type TextSegmenterMode = 'sentence_window' | 'logical_block';
+export type IntentTarget = 'query' | 'memory';
+
+export interface IntentClassification {
+  primary_intent: string;
+  scores: Record<string, number>;
+  top_intents: string[];
+  top_score: number;
+  margin: number;
+  confidence_weight: number;
+  recall_eligible: boolean;
+  recall_action: 'recall' | 'no_recall';
+  memory_eligible: boolean;
+  model_version: string;
+  taxonomy_version: string;
+}
 
 export interface Memory {
   id: MemoryId;
@@ -47,8 +63,11 @@ export interface AddMemoryRequest {
   content: string;
   cues?: string[];
   source_key?: string;
+  /** Original event timestamp as Unix seconds. Defaults to ingestion time. */
+  event_time?: number;
+  /** Optional precomputed embedding. When omitted, the engine can use its configured local encoder. */
+  embedding?: number[];
   metadata?: Record<string, any>;
-  cuepacks?: string[];
   disable_temporal_chunking?: boolean;
   async_ingest?: boolean;
   minimal_response?: boolean;
@@ -57,7 +76,10 @@ export interface AddMemoryRequest {
 
 export interface AddMemoryOptions {
   sourceKey?: string;
-  cuepacks?: string[];
+  /** Original event timestamp as Unix seconds. Defaults to ingestion time. */
+  eventTime?: number;
+  /** Optional precomputed embedding. */
+  embedding?: number[];
   asyncIngest?: boolean;
   minimalResponse?: boolean;
   traceTiming?: boolean;
@@ -77,7 +99,6 @@ export interface RecallRequest {
   disable_salience_bias?: boolean;
   disable_alias_expansion?: boolean;
   expansion_depth?: number;
-  cuepacks?: string[];
   parent_fusion?: RecallExpansionMode;
   parent_fusion_limit?: number;
   parent_fusion_min_chunks?: number;
@@ -91,6 +112,10 @@ export interface RecallRequest {
   evidence_coverage_max_sessions?: number;
   disable_cuebridge_artifacts?: boolean;
   cuebridge_gap_limit?: number;
+  /** Selects lexical-only, semantic-only, or hybrid query signals. */
+  semantic_mode?: SemanticRecallMode;
+  /** Optional precomputed query embedding. */
+  query_embedding?: number[];
   /** @deprecated Removed from the v0.7 engine. Accepted for source compatibility but not sent. */
   disable_pattern_completion?: boolean;
   /** @deprecated Removed from the v0.7 engine. Accepted for source compatibility but not sent. */
@@ -105,6 +130,8 @@ export interface IngestContentOptions {
   sourceKey?: string;
   metadata?: Record<string, any>;
   structuralCues?: string[];
+  /** Optional one-vector-per-produced-chunk embeddings. */
+  embeddings?: number[][];
   segmenter?: TextSegmenterMode;
   segmentWindowSize?: number;
   segmentOverlap?: number;
@@ -117,7 +144,6 @@ export interface DebugAnalyzeTextOptions {
   metadata?: Record<string, any>;
   existingCues?: string[];
   availableCues?: string[];
-  cuepacks?: string[];
   filename?: string;
   segmenter?: TextSegmenterMode;
   segmentWindowSize?: number;
@@ -231,7 +257,8 @@ export class CueMap {
         metadata,
         disable_temporal_chunking: disableTemporalChunking,
         source_key: options.sourceKey,
-        cuepacks: options.cuepacks,
+        event_time: options.eventTime,
+        embedding: options.embedding,
         async_ingest: options.asyncIngest,
         minimal_response: options.minimalResponse,
         trace_timing: options.traceTiming,
@@ -256,6 +283,20 @@ export class CueMap {
         minimal_response: minimalResponse,
         trace_timing: traceTiming,
       }
+    );
+  }
+
+  /**
+   * Classify query or memory intent with the engine's local model.
+   */
+  async classifyIntent(
+    text: string,
+    target: IntentTarget = 'query'
+  ): Promise<IntentClassification> {
+    return await this.request<IntentClassification>(
+      'POST',
+      '/intent/classify',
+      { text, target }
     );
   }
 
@@ -348,13 +389,43 @@ export class CueMap {
     projectId: string,
     watchDir: string,
     ignoredPatterns?: string[],
-    ignoredExtensions?: string[]
+    ignoredExtensions?: string[],
+    includedPaths?: string[]
   ): Promise<any> {
     return await this.request<any>(
       'POST',
       `/projects/${projectId}/watch-dir`,
       this.cleanBody({
         watch_dir: watchDir,
+        included_paths: includedPaths,
+        ignored_patterns: ignoredPatterns,
+        ignored_extensions: ignoredExtensions,
+      })
+    );
+  }
+
+  /**
+   * Read the persisted repository ingestion scope for a project.
+   */
+  async getProjectWatchDir(projectId: string): Promise<any> {
+    return await this.request<any>('GET', `/projects/${projectId}/watch-dir`);
+  }
+
+  /**
+   * Preview supported repository files without ingesting their contents.
+   */
+  async previewDirectory(
+    watchDir: string,
+    includedPaths?: string[],
+    ignoredPatterns?: string[],
+    ignoredExtensions?: string[]
+  ): Promise<any> {
+    return await this.request<any>(
+      'POST',
+      '/ingest/directory/preview',
+      this.cleanBody({
+        watch_dir: watchDir,
+        included_paths: includedPaths,
         ignored_patterns: ignoredPatterns,
         ignored_extensions: ignoredExtensions,
       })
@@ -610,6 +681,7 @@ export class CueMap {
         source_key: options.sourceKey,
         metadata: options.metadata,
         structural_cues: options.structuralCues,
+        embeddings: options.embeddings,
         segmenter: options.segmenter,
         segment_window_size: options.segmentWindowSize,
         segment_overlap: options.segmentOverlap,
@@ -643,7 +715,6 @@ export class CueMap {
         metadata: options.metadata,
         existing_cues: options.existingCues,
         available_cues: options.availableCues,
-        cuepacks: options.cuepacks,
         filename: options.filename,
         segmenter: options.segmenter,
         segment_window_size: options.segmentWindowSize,
@@ -767,7 +838,6 @@ export interface RecallGroundedRequest {
   disable_salience_bias?: boolean;
   disable_alias_expansion?: boolean;
   expansion_depth?: number;
-  cuepacks?: string[];
   /** @deprecated Removed from the v0.7 engine. Accepted for source compatibility but not sent. */
   disable_pattern_completion?: boolean;
   /** @deprecated Removed from the v0.7 engine. Accepted for source compatibility but not sent. */

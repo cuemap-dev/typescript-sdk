@@ -1,13 +1,25 @@
 {
   "name": "cuemap",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "description": "CueMap TypeScript SDK - High-performance temporal-associative memory",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./embedded": {
+      "types": "./dist/embedded.d.ts",
+      "default": "./dist/embedded.js"
+    }
+  },
   "scripts": {
     "build": "tsc",
     "prepublishOnly": "npm run build",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "npm run build && node --test test/*.test.js",
+    "test:e2e": "CUEMAP_E2E=1 node --test test/*.test.js",
+    "test:pack": "node scripts/verify-packed-install.mjs"
   },
   "keywords": [
     "ai",
