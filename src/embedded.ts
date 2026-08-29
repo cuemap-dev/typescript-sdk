@@ -3,7 +3,7 @@ import { createRequire } from 'node:module';
 import { createServer, get as httpGet } from 'node:http';
 import { closeSync, existsSync, mkdirSync, openSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, extname, join, resolve } from 'node:path';
 
 export interface EmbeddedCueMapOptions {
   /** Attach to an already-running engine instead of starting one. */
@@ -223,7 +223,15 @@ export class EmbeddedCueMap {
 
     let child: ChildProcess;
     try {
-      child = spawn(executable, args, {
+      // The Windows native package exposes a shebang Node wrapper next to the
+      // .exe. Windows cannot spawn that wrapper directly, so invoke it via the
+      // current Node runtime. A real .exe or PATH-resolved binary stays direct.
+      const runThroughNode = process.platform === 'win32'
+        && existsSync(executable)
+        && extname(executable).toLowerCase() !== '.exe';
+      const spawnExecutable = runThroughNode ? process.execPath : executable;
+      const spawnArgs = runThroughNode ? [executable, ...args] : args;
+      child = spawn(spawnExecutable, spawnArgs, {
         stdio,
         env: { ...process.env, ...options.env, CUEMAP_PORT: String(port) },
       });

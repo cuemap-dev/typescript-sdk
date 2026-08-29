@@ -1,4 +1,17 @@
-# CueMap TypeScript SDK
+<p align="center">
+  <img src="https://raw.githubusercontent.com/cuemap-dev/cuemap/main/landing-pagev3/public/cuemap-social-mark-v1.png" alt="CueMap" width="120">
+</p>
+
+<h1 align="center">CueMap TypeScript SDK</h1>
+
+<p align="center">A polished TypeScript client for fast, accurate, and explainable agent memory.</p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/cuemap"><img src="https://img.shields.io/npm/v/cuemap?logo=npm" alt="npm"></a>
+  <a href="https://www.npmjs.com/package/cuemap"><img src="https://img.shields.io/npm/dm/cuemap?logo=npm" alt="npm downloads"></a>
+  <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-ready-3178c6?logo=typescript&logoColor=white" alt="TypeScript"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-5e5ce6" alt="License"></a>
+</p>
 
 **High-performance temporal-associative memory store** designed for dynamic contextual retrieval.
 
@@ -12,9 +25,9 @@ CueMap implements a **Continuous Gradient Algorithm** optimized for associative 
 4.  **Reinforcement (Access-based Learning)**: Frequently accessed memories gain signal strength, remaining highly accessible even as they age.
 5.  **Deterministic Facets & Intent Routing**: Extracts synchronous source, evidence, temporal, type, and entity facets, then uses sparse intent cues and reranking during recall.
 
-As of v0.7.2, CueMap keeps deterministic lexical candidate discovery and adds bundled qint8 `all-MiniLM-L3-v2` for bounded hybrid semantic and intent reranking. The `edge` engine profile uses a q4 build of the same model. No runtime model download is required, and callers can disable the encoder or provide their own vectors.
+As of v0.7.3, CueMap keeps deterministic lexical candidate discovery and adds bundled qint8 `all-MiniLM-L3-v2` for bounded hybrid semantic and intent reranking. The `edge` engine profile uses a q4 build of the same model. No runtime model download is required, and callers can disable the encoder or provide their own vectors.
 
-v0.7.2 also uses numeric per-project memory IDs everywhere. If callers need deterministic upsert/dedupe identity, pass `source_key`; memory IDs remain compact runtime addresses.
+v0.7.3 also uses numeric per-project memory IDs everywhere. If callers need deterministic upsert/dedupe identity, pass `source_key`; memory IDs remain compact runtime addresses. The SDK remains compatible with the Rust engine's Tree-sitter-backed Swift, Dart, Objective-C, and Kotlin ingestion paths.
 
 Use this SDK to talk to the Rust engine from TypeScript and JavaScript applications.
 
@@ -82,9 +95,9 @@ console.log(response.results[0].explain);
 // Shows normalized cues, intent cues, and reranking details.
 ```
 
-### v0.7.2 Recall Controls
+### v0.7.3 Recall Controls
 
-CueMap v0.7.2 adds local semantic query signals alongside temporal query intent and the optional reconstruction passes for longer conversational/codebase context.
+CueMap v0.7.3 adds local semantic query signals alongside temporal query intent and the optional reconstruction passes for longer conversational/codebase context.
 
 ```typescript
 const response = await client.recall({

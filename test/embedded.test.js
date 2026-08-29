@@ -46,7 +46,7 @@ async function waitFor(predicate, timeoutMs = 5_000) {
 }
 
 test('attaches to an existing CueMap engine without claiming ownership', async () => {
-  const url = await listen({ name: 'CueMap Rust Engine', version: '0.7.2' });
+  const url = await listen({ name: 'CueMap Rust Engine', version: '0.7.3' });
   const engine = await EmbeddedCueMap.start({ url });
 
   assert.equal(engine.url, url);
@@ -57,7 +57,7 @@ test('attaches to an existing CueMap engine without claiming ownership', async (
 test('attaches when an existing engine advertises every required capability', async () => {
   const url = await listen({
     name: 'CueMap Rust Engine',
-    version: '0.7.2',
+    version: '0.7.3',
     capabilities: ['repository_ingestion_scope_v1'],
   });
   const engine = await EmbeddedCueMap.start({
@@ -71,7 +71,7 @@ test('attaches when an existing engine advertises every required capability', as
 });
 
 test('rejects an existing CueMap engine missing a required capability', async () => {
-  const url = await listen({ name: 'CueMap Rust Engine', version: '0.7.2' });
+  const url = await listen({ name: 'CueMap Rust Engine', version: '0.7.3' });
   await assert.rejects(
     EmbeddedCueMap.start({
       url,

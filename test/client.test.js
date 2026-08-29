@@ -66,7 +66,7 @@ test('repository scope preview and apply preserve selected paths', async (contex
   assert.equal(requests[2].method, 'GET');
 });
 
-test('recall sends v0.7.2 semantic controls', async (context) => {
+test('recall sends v0.7.3 semantic controls', async (context) => {
   const originalFetch = global.fetch;
   context.after(() => {
     global.fetch = originalFetch;
