@@ -30,7 +30,7 @@ export interface EmbeddedCueMapConnection {
 }
 
 const requireFromHere = createRequire(__filename);
-const DEFAULT_PORT = 8080;
+const DEFAULT_PORT = 8735;
 const DEFAULT_STARTUP_TIMEOUT_MS = 15_000;
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 5_000;
 

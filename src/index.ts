@@ -166,7 +166,7 @@ export class CueMap {
   private timeout: number;
 
   constructor(config: CueMapConfig = {}) {
-    this.url = config.url || 'http://localhost:8080';
+    this.url = config.url || 'http://localhost:8735';
     this.apiKey = config.apiKey;
     this.projectId = config.projectId;
     this.timeout = config.timeout || 30000;
