@@ -127,6 +127,27 @@ console.log(response.proof);
 // Cryptographic proof of context retrieval
 ```
 
+### Project memory lifecycle
+
+The engine can unload inactive project contexts while keeping their snapshots
+on disk. Normal project operations demand-load a project when needed, so the
+first request after an unload may take longer. Use the explicit helpers when
+you want to control residency:
+
+```typescript
+await client.unloadProject("older-repository");
+await client.loadProject("older-repository");
+await client.saveProject("older-repository"); // persist without unloading
+
+for (const project of await client.listProjects()) {
+  console.log(project.project_id, project.loaded);
+}
+```
+
+Portable projects use the same four operations as the CLI: `packProject()`,
+`loadProjectPackage()`, `pushProject()`, and `pullProject()`.
+Use `syncProject(projectId, "s3://bucket/team")` for conflict-safe fast-forward sync.
+
 For a controlled semantic comparison, use `semantic_mode: "lexical"`. Use `"semantic"` for vector candidate discovery or `"hybrid"` (the engine default) to rerank lexical candidates with the configured local encoder. `query_embedding` can supply a precomputed vector when the application owns the embedding provider.
 
 Classify query or memory intent with the same local model. Returned scores are ranking signals, not calibrated probabilities:

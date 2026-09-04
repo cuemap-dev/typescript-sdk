@@ -43,6 +43,46 @@ export interface Memory {
   stats?: Record<string, any>;
 }
 
+export interface ProjectInfo {
+  project_id: string;
+  total_memories: number;
+  total_cues: number;
+  created_at: number;
+  last_activity: number;
+  loaded: boolean;
+}
+
+export interface ProjectLifecycleResponse {
+  status: 'loaded' | 'unloaded' | 'already_unloaded';
+  project_id: string;
+  loaded: boolean;
+  total_memories?: number;
+}
+
+export interface ProjectSaveResponse {
+  status: 'saved';
+  project_id: string;
+}
+
+export interface ProjectPackageResponse {
+  status: 'loaded' | 'pushed' | 'pulled';
+  project_id: string;
+  file_count: number;
+  size_bytes: number;
+  loaded?: boolean;
+  destination?: string;
+  source?: string;
+}
+
+export interface ProjectSyncResponse {
+  action: 'pushed' | 'pulled' | 'up_to_date' | 'adopted';
+  project_id: string;
+  remote: string;
+  generation: number;
+  commit_sha256: string;
+  package_sha256: string;
+}
+
 export interface RecallResult {
   memory_id: MemoryId;
   content: string;
@@ -172,9 +212,9 @@ export class CueMap {
     this.timeout = config.timeout || 30000;
   }
 
-  private getHeaders(): Record<string, string> {
+  private getHeaders(contentType: string = 'application/json'): Record<string, string> {
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
+      'Content-Type': contentType,
     };
 
     if (this.apiKey) {
@@ -208,14 +248,29 @@ export class CueMap {
     path: string,
     body?: any
   ): Promise<T> {
+    const response = await this.requestRaw(
+      method,
+      path,
+      body === undefined ? undefined : JSON.stringify(body),
+      'application/json'
+    );
+    return await response.json() as T;
+  }
+
+  private async requestRaw(
+    method: string,
+    path: string,
+    body?: BodyInit,
+    contentType: string = 'application/json'
+  ): Promise<Response> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
     try {
       const response = await fetch(`${this.url}${path}`, {
         method,
-        headers: this.getHeaders(),
-        body: body ? JSON.stringify(body) : undefined,
+        headers: this.getHeaders(contentType),
+        body,
         signal: controller.signal as any,
       });
 
@@ -228,7 +283,7 @@ export class CueMap {
         throw new CueMapError(`Request failed: ${response.status}`);
       }
 
-      return await response.json() as T;
+      return response;
     } catch (error) {
       clearTimeout(timeoutId);
       if (error instanceof CueMapError) {
@@ -371,8 +426,8 @@ export class CueMap {
   /**
    * List all projects (multi-tenant only)
    */
-  async listProjects(): Promise<string[]> {
-    return await this.request<string[]>('GET', '/projects');
+  async listProjects(): Promise<ProjectInfo[]> {
+    return await this.request<ProjectInfo[]>('GET', '/projects');
   }
 
   /**
@@ -380,6 +435,92 @@ export class CueMap {
    */
   async createProject(projectId: string): Promise<any> {
     return await this.request<any>('POST', '/projects', { project_id: projectId });
+  }
+
+  /**
+   * Load a project's persisted snapshot into engine memory.
+   */
+  async loadProject(projectId: string): Promise<ProjectLifecycleResponse> {
+    return await this.request<ProjectLifecycleResponse>(
+      'POST',
+      `/projects/${encodeURIComponent(projectId)}/load`
+    );
+  }
+
+  /**
+   * Persist a current project snapshot without unloading it.
+   */
+  async saveProject(projectId: string): Promise<ProjectSaveResponse> {
+    return await this.request<ProjectSaveResponse>(
+      'POST',
+      `/projects/${encodeURIComponent(projectId)}/save`
+    );
+  }
+
+  /**
+   * Persist and unload a project from engine memory.
+   */
+  async unloadProject(projectId: string): Promise<ProjectLifecycleResponse> {
+    return await this.request<ProjectLifecycleResponse>(
+      'POST',
+      `/projects/${encodeURIComponent(projectId)}/unload`
+    );
+  }
+
+  /**
+   * Return a ready-to-query project as portable `.cuemap` bytes.
+   */
+  async packProject(projectId: string): Promise<Uint8Array> {
+    const response = await this.requestRaw(
+      'POST',
+      `/projects/${encodeURIComponent(projectId)}/pack`
+    );
+    return new Uint8Array(await response.arrayBuffer());
+  }
+
+  /**
+   * Install and warm a portable `.cuemap` package.
+   */
+  async loadProjectPackage(packageData: Blob | ArrayBuffer | Uint8Array): Promise<ProjectPackageResponse> {
+    const body: BodyInit = packageData instanceof Uint8Array
+      ? Uint8Array.from(packageData).buffer
+      : packageData;
+    const response = await this.requestRaw(
+      'POST',
+      '/projects/load',
+      body,
+      'application/vnd.cuemap.project'
+    );
+    return await response.json() as ProjectPackageResponse;
+  }
+
+  /**
+   * Pack and upload a project using the server's configured AWS CLI.
+   */
+  async pushProject(projectId: string, destination: string): Promise<ProjectPackageResponse> {
+    return await this.request<ProjectPackageResponse>(
+      'POST',
+      `/projects/${encodeURIComponent(projectId)}/push`,
+      { destination }
+    );
+  }
+
+  /**
+   * Download, install, and warm a project using the server's configured AWS CLI.
+   */
+  async pullProject(source: string): Promise<ProjectPackageResponse> {
+    return await this.request<ProjectPackageResponse>('POST', '/projects/pull', { source });
+  }
+
+  /**
+   * Fast-forward a project through its immutable S3 sync history.
+   */
+  async syncProject(projectId: string, remote: string): Promise<ProjectSyncResponse> {
+    return await this.request<ProjectSyncResponse>(
+      'POST',
+      `/projects/${encodeURIComponent(projectId)}/sync`,
+      { remote }
+    );
   }
 
   /**
