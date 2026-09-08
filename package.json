@@ -18,7 +18,7 @@
     "build": "tsc",
     "prepublishOnly": "npm run build",
     "test": "npm run build && node --test test/*.test.js",
-    "test:e2e": "CUEMAP_E2E=1 node --test test/*.test.js",
+    "test:e2e": "npm run build && node scripts/run-e2e.cjs",
     "test:pack": "node scripts/verify-packed-install.mjs"
   },
   "keywords": [
