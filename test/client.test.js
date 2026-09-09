@@ -190,3 +190,17 @@ test('intent classification and chunk embeddings match the engine schema', async
   assert.deepEqual(requests[0].body, { text: 'What did we decide?', target: 'query' });
   assert.deepEqual(requests[1].body.embeddings, [[0.1, 0.2], [0.3, 0.4]]);
 });
+
+test('recall forwards engine preview options and preserves excerpts', async (context) => {
+  const previous = global.fetch;
+  context.after(() => { global.fetch = previous; });
+  const response = { response_mode: 'preview', results: [{ memory_id: 1, preview: 'excerpt', content_truncated: true, content_length: 900 }] };
+  global.fetch = async (_url, options) => {
+    const payload = JSON.parse(options.body);
+    assert.equal(payload.response_mode, 'preview');
+    assert.equal(payload.preview_chars, 100);
+    return { ok: true, json: async () => response };
+  };
+  const client = new CueMap({ projectId: 'preview-test' });
+  assert.deepEqual(await client.recall({ query_text: 'discovery', response_mode: 'preview', preview_chars: 100 }), response);
+});

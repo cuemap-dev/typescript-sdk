@@ -99,6 +99,13 @@ export interface RecallResult {
   explain?: Record<string, any>;
 }
 
+export interface RecallPreviewResult extends Omit<RecallResult, "content"> {
+  preview: string;
+  content_truncated: boolean;
+  /** Original content length in UTF-16 code units. */
+  content_length: number;
+}
+
 export interface AddMemoryRequest {
   content: string;
   cues?: string[];
@@ -126,6 +133,10 @@ export interface AddMemoryOptions {
 }
 
 export interface RecallRequest {
+  /** Engine response shaping; full content by default. */
+  response_mode?: "full" | "preview";
+  /** Leading excerpt cap in UTF-16 code units (100–2000, default 200). */
+  preview_chars?: number;
   cues?: string[];
   query_text?: string;
   query_time?: string;
