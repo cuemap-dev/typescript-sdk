@@ -11,10 +11,19 @@ const engines = [];
 const temporaryDirectories = [];
 
 afterEach(async () => {
-  await Promise.all(engines.splice(0).map((engine) => engine.stop()));
-  await Promise.all(servers.splice(0).map((server) => new Promise((resolve) => server.close(resolve))));
-  for (const directory of temporaryDirectories.splice(0)) {
-    rmSync(directory, { recursive: true, force: true });
+  try {
+    await Promise.all(engines.splice(0).map(async (engine) => {
+      try {
+        await engine.stop();
+      } finally {
+        await engine.stop({ force: true });
+      }
+    }));
+  } finally {
+    await Promise.all(servers.splice(0).map((server) => new Promise((resolve) => server.close(resolve))));
+    for (const directory of temporaryDirectories.splice(0)) {
+      rmSync(directory, { recursive: true, force: true });
+    }
   }
 });
 
@@ -99,9 +108,11 @@ const port = Number(process.argv[portIndex + 1]);
 process.stdout.write('fake snapshot stdout\\n');
 process.stderr.write('fake snapshot stderr\\n');
 if (process.env.CUEMAP_API_KEY !== 'test-secret' || process.env.CUEMAP_HOST !== '127.0.0.1') process.exit(42);
-const server = createServer((_request, response) => {
+const server = createServer((request, response) => {
   response.setHeader('content-type', 'application/json');
-  response.end(JSON.stringify({ name: 'CueMap Rust Engine', capabilities: [] }));
+  response.end(JSON.stringify(request.url === '/projects'
+    ? []
+    : { name: 'CueMap Rust Engine', capabilities: [] }));
 });
 server.listen(port, '127.0.0.1');
 for (const signal of ['SIGINT', 'SIGTERM']) {
@@ -128,6 +139,14 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
   const log = readFileSync(logPath, 'utf8');
   assert.match(log, /fake snapshot stdout/);
   assert.match(log, /fake snapshot stderr/);
+
+  const platform = Object.getOwnPropertyDescriptor(process, 'platform');
+  try {
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+    await engine.stop();
+  } finally {
+    Object.defineProperty(process, 'platform', platform);
+  }
 });
 
 test('saves loaded projects before terminating an owned Windows engine', async () => {
