@@ -48,6 +48,21 @@ function sleep(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
+function waitForExit(child: ChildProcess, timeoutMs: number): Promise<boolean> {
+  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const onExit = () => {
+      clearTimeout(timer);
+      resolve(true);
+    };
+    const timer = setTimeout(() => {
+      child.off('exit', onExit);
+      resolve(false);
+    }, timeoutMs);
+    child.once('exit', onExit);
+  });
+}
+
 function normalizeUrl(url: string): string {
   return url.replace(/\/+$/, '');
 }
@@ -289,7 +304,7 @@ export class EmbeddedCueMap {
     throw new Error(`CueMap did not become ready within ${startupTimeoutMs}ms`);
   }
 
-  async stop(): Promise<void> {
+  async stop(options: { force?: boolean } = {}): Promise<void> {
     const child = this.process;
     if (!child || child.exitCode !== null || child.signalCode !== null) {
       this.process = undefined;
@@ -298,7 +313,7 @@ export class EmbeddedCueMap {
 
     // On Windows, Node terminates children abruptly for SIGTERM and SIGINT.
     // Persist loaded projects before the engine loses its shutdown-save chance.
-    if (process.platform === 'win32') {
+    if (process.platform === 'win32' && !options.force) {
       const client = new CueMap({ url: this.url, apiKey: this.apiKey, timeout: this.shutdownTimeoutMs });
       const projects = await client.listProjects();
       for (const project of projects) {
@@ -311,13 +326,16 @@ export class EmbeddedCueMap {
       return;
     }
 
-    const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()));
+    const exited = waitForExit(child, this.shutdownTimeoutMs);
     this.process = undefined;
     child.kill('SIGTERM');
-    const timedOut = sleep(this.shutdownTimeoutMs).then(() => 'timeout' as const);
-    if (await Promise.race([exited.then(() => 'exited' as const), timedOut]) === 'timeout') {
+    if (!(await exited)) {
+      const forcedExit = waitForExit(child, 1_000);
       child.kill('SIGKILL');
-      await exited;
+      if (!(await forcedExit)) {
+        child.unref();
+        throw new Error('CueMap did not exit after forced shutdown');
+      }
     }
   }
 }
