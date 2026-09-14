@@ -5,6 +5,7 @@ import { get as httpsGet } from 'node:https';
 import { closeSync, existsSync, mkdirSync, openSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, dirname, extname, join, resolve } from 'node:path';
+import CueMap from './index';
 
 export interface EmbeddedCueMapOptions {
   /** Attach to an already-running engine instead of starting one. */
@@ -166,14 +167,17 @@ export function resolveCueMapBinary(explicitPath?: string): string {
 export class EmbeddedCueMap {
   private process?: ChildProcess;
   private readonly shutdownTimeoutMs: number;
+  private readonly apiKey?: string;
 
   private constructor(
     public readonly connection: EmbeddedCueMapConnection,
     shutdownTimeoutMs: number,
-    process?: ChildProcess
+    process?: ChildProcess,
+    apiKey?: string
   ) {
     this.process = process;
     this.shutdownTimeoutMs = shutdownTimeoutMs;
+    this.apiKey = apiKey;
   }
 
   get url(): string {
@@ -276,7 +280,7 @@ export class EmbeddedCueMap {
           throw error;
         }
         logger(`CueMap is ready at ${url}`);
-        return new EmbeddedCueMap({ url, owned: true }, shutdownTimeoutMs, child);
+        return new EmbeddedCueMap({ url, owned: true }, shutdownTimeoutMs, child, options.apiKey);
       }
       await sleep(100);
     }
@@ -287,11 +291,29 @@ export class EmbeddedCueMap {
 
   async stop(): Promise<void> {
     const child = this.process;
-    this.process = undefined;
-    if (!child || child.exitCode !== null || child.signalCode !== null) return;
+    if (!child || child.exitCode !== null || child.signalCode !== null) {
+      this.process = undefined;
+      return;
+    }
 
-    child.kill('SIGTERM');
+    // On Windows, Node terminates children abruptly for SIGTERM and SIGINT.
+    // Persist loaded projects before the engine loses its shutdown-save chance.
+    if (process.platform === 'win32') {
+      const client = new CueMap({ url: this.url, apiKey: this.apiKey, timeout: this.shutdownTimeoutMs });
+      const projects = await client.listProjects();
+      for (const project of projects) {
+        if (project.loaded) await client.saveProject(project.project_id);
+      }
+    }
+
+    if (child.exitCode !== null || child.signalCode !== null) {
+      this.process = undefined;
+      return;
+    }
+
     const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()));
+    this.process = undefined;
+    child.kill('SIGTERM');
     const timedOut = sleep(this.shutdownTimeoutMs).then(() => 'timeout' as const);
     if (await Promise.race([exited.then(() => 'exited' as const), timedOut]) === 'timeout') {
       child.kill('SIGKILL');

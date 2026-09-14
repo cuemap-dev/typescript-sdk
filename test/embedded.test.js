@@ -130,6 +130,60 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
   assert.match(log, /fake snapshot stderr/);
 });
 
+test('saves loaded projects before terminating an owned Windows engine', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'cuemap-windows-stop-'));
+  temporaryDirectories.push(directory);
+  const executable = join(directory, 'fake-cuemap');
+  const snapshot = join(directory, 'saved-snapshot');
+  writeFileSync(executable, `#!/usr/bin/env node
+const { createServer } = require('node:http');
+const { writeFileSync } = require('node:fs');
+const port = Number(process.argv[process.argv.indexOf('--port') + 1]);
+let saveAttempts = 0;
+const server = createServer((request, response) => {
+  response.setHeader('content-type', 'application/json');
+  if (request.url === '/') {
+    response.end(JSON.stringify({ name: 'CueMap Rust Engine' }));
+  } else if (request.headers['x-api-key'] !== 'test-secret') {
+    response.writeHead(401).end('{}');
+  } else if (request.url === '/projects') {
+    response.end(JSON.stringify([
+      { project_id: 'repo/one', loaded: true },
+      { project_id: 'repo/unused', loaded: false },
+    ]));
+  } else if (request.url === '/projects/repo%2Fone/save') {
+    if (++saveAttempts === 1) response.writeHead(500).end('{}');
+    else {
+      writeFileSync(${JSON.stringify(snapshot)}, 'saved');
+      response.end(JSON.stringify({ status: 'saved', project_id: 'repo/one' }));
+    }
+  } else {
+    response.writeHead(500).end('{}');
+  }
+});
+server.listen(port, '127.0.0.1');
+process.once('SIGTERM', () => server.close(() => process.exit(0)));
+`);
+  chmodSync(executable, 0o755);
+
+  const engine = await EmbeddedCueMap.start({
+    binPath: executable,
+    apiKey: 'test-secret',
+    port: await freePort(),
+    logPath: false,
+  });
+  engines.push(engine);
+  const platform = Object.getOwnPropertyDescriptor(process, 'platform');
+  try {
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+    await assert.rejects(engine.stop(), /Request failed: 500/);
+    assert.equal(existsSync(snapshot), false);
+    await engine.stop();
+  } finally {
+    Object.defineProperty(process, 'platform', platform);
+  }
+  assert.equal(readFileSync(snapshot, 'utf8'), 'saved');
+});
 
 test('HTTPS attachment uses the TLS transport', async (context) => {
   const https = require('node:https');
