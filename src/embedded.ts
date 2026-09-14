@@ -1,9 +1,11 @@
 import { ChildProcess, spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { createServer, get as httpGet } from 'node:http';
+import { get as httpsGet } from 'node:https';
 import { closeSync, existsSync, mkdirSync, openSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { delimiter, dirname, extname, join, resolve } from 'node:path';
+import CueMap from './index';
 
 export interface EmbeddedCueMapOptions {
   /** Attach to an already-running engine instead of starting one. */
@@ -30,7 +32,7 @@ export interface EmbeddedCueMapConnection {
 }
 
 const requireFromHere = createRequire(__filename);
-const DEFAULT_PORT = 8080;
+const DEFAULT_PORT = 8735;
 const DEFAULT_STARTUP_TIMEOUT_MS = 15_000;
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 5_000;
 
@@ -46,6 +48,21 @@ function sleep(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
+function waitForExit(child: ChildProcess, timeoutMs: number): Promise<boolean> {
+  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const onExit = () => {
+      clearTimeout(timer);
+      resolve(true);
+    };
+    const timer = setTimeout(() => {
+      child.off('exit', onExit);
+      resolve(false);
+    }, timeoutMs);
+    child.once('exit', onExit);
+  });
+}
+
 function normalizeUrl(url: string): string {
   return url.replace(/\/+$/, '');
 }
@@ -57,7 +74,8 @@ interface EngineInspection {
 
 async function inspectEngine(url: string, apiKey?: string): Promise<EngineInspection> {
   return await new Promise((resolve) => {
-    const request = httpGet(
+    const get = new URL(url).protocol === 'https:' ? httpsGet : httpGet;
+    const request = get(
       `${normalizeUrl(url)}/`,
       { headers: apiKey ? { 'X-API-Key': apiKey } : undefined },
       (response) => {
@@ -70,7 +88,7 @@ async function inspectEngine(url: string, apiKey?: string): Promise<EngineInspec
           try {
             const value = JSON.parse(body) as { name?: unknown; capabilities?: unknown };
             resolve({
-              status: value.name === 'CueMap Rust Engine' ? 'cuemap' : 'occupied',
+              status: response.statusCode === 200 && value.name === 'CueMap Rust Engine' ? 'cuemap' : 'occupied',
               capabilities: Array.isArray(value.capabilities)
                 ? value.capabilities.filter((item): item is string => typeof item === 'string')
                 : [],
@@ -133,12 +151,21 @@ export function resolveCueMapBinary(explicitPath?: string): string {
     const manifest = requireFromHere.resolve(`${packageName}/package.json`);
     const packageBin = join(dirname(manifest), 'bin');
     const candidates = process.platform === 'win32'
-      ? [join(packageBin, 'cuemap'), join(packageBin, 'cuemap.exe')]
+      ? [join(packageBin, 'cuemap-native.exe'), join(packageBin, 'cuemap')]
       : [join(packageBin, 'cuemap')];
     const binaryPath = candidates.find((candidate) => existsSync(candidate));
     if (binaryPath) return binaryPath;
   } catch {
     // The platform package is optional; PATH remains a valid installation mode.
+  }
+
+  if (process.platform === 'win32') {
+    for (const directory of (process.env.PATH || '').split(delimiter)) {
+      const native = join(directory, 'node_modules', packageName, 'bin', 'cuemap-native.exe');
+      if (existsSync(native)) return native;
+      const executable = join(directory, 'cuemap.exe');
+      if (existsSync(executable)) return executable;
+    }
   }
 
   const binaryName = process.platform === 'win32' ? 'cuemap.exe' : 'cuemap';
@@ -155,14 +182,17 @@ export function resolveCueMapBinary(explicitPath?: string): string {
 export class EmbeddedCueMap {
   private process?: ChildProcess;
   private readonly shutdownTimeoutMs: number;
+  private readonly apiKey?: string;
 
   private constructor(
     public readonly connection: EmbeddedCueMapConnection,
     shutdownTimeoutMs: number,
-    process?: ChildProcess
+    process?: ChildProcess,
+    apiKey?: string
   ) {
     this.process = process;
     this.shutdownTimeoutMs = shutdownTimeoutMs;
+    this.apiKey = apiKey;
   }
 
   get url(): string {
@@ -201,6 +231,9 @@ export class EmbeddedCueMap {
     const port = preferredInspection.status === 'occupied' ? await findFreePort() : preferredPort;
     const url = `http://127.0.0.1:${port}`;
     const executable = resolveCueMapBinary(options.binPath);
+    if (process.platform === 'win32' && ['.cmd', '.bat', '.ps1'].includes(extname(executable).toLowerCase())) {
+      throw new Error('Use the native .exe or the npm package bin/cuemap wrapper, not a shell shim');
+    }
     const args = ['start', '--port', String(port)];
     if (options.configPath) args.push('--config', options.configPath);
 
@@ -221,11 +254,23 @@ export class EmbeddedCueMap {
       }
     }
 
+    const childEnv: NodeJS.ProcessEnv = { ...process.env, ...options.env, CUEMAP_PORT: String(port),
+      CUEMAP_HOST: '127.0.0.1', ...(options.apiKey ? { CUEMAP_API_KEY: options.apiKey } : {}) };
+    const tokenizer = join(dirname(dirname(executable)), 'assets', 'en_tokenizer.bin');
+    if (process.platform === 'win32' && existsSync(tokenizer)) childEnv.TOKENIZER_PATH ??= tokenizer;
     let child: ChildProcess;
     try {
-      child = spawn(executable, args, {
+      // The Windows native package exposes a shebang Node wrapper next to the
+      // .exe. Windows cannot spawn that wrapper directly, so invoke it via the
+      // current Node runtime. A real .exe or PATH-resolved binary stays direct.
+      const runThroughNode = process.platform === 'win32'
+        && existsSync(executable)
+        && extname(executable).toLowerCase() !== '.exe';
+      const spawnExecutable = runThroughNode ? process.execPath : executable;
+      const spawnArgs = runThroughNode ? [executable, ...args] : args;
+      child = spawn(spawnExecutable, spawnArgs, {
         stdio,
-        env: { ...process.env, ...options.env, CUEMAP_PORT: String(port) },
+        env: childEnv,
       });
     } finally {
       if (logFileDescriptor !== undefined) closeSync(logFileDescriptor);
@@ -250,7 +295,7 @@ export class EmbeddedCueMap {
           throw error;
         }
         logger(`CueMap is ready at ${url}`);
-        return new EmbeddedCueMap({ url, owned: true }, shutdownTimeoutMs, child);
+        return new EmbeddedCueMap({ url, owned: true }, shutdownTimeoutMs, child, options.apiKey);
       }
       await sleep(100);
     }
@@ -259,17 +304,38 @@ export class EmbeddedCueMap {
     throw new Error(`CueMap did not become ready within ${startupTimeoutMs}ms`);
   }
 
-  async stop(): Promise<void> {
+  async stop(options: { force?: boolean } = {}): Promise<void> {
     const child = this.process;
-    this.process = undefined;
-    if (!child || child.exitCode !== null || child.signalCode !== null) return;
+    if (!child || child.exitCode !== null || child.signalCode !== null) {
+      this.process = undefined;
+      return;
+    }
 
+    // On Windows, Node terminates children abruptly for SIGTERM and SIGINT.
+    // Persist loaded projects before the engine loses its shutdown-save chance.
+    if (process.platform === 'win32' && !options.force) {
+      const client = new CueMap({ url: this.url, apiKey: this.apiKey, timeout: this.shutdownTimeoutMs });
+      const projects = await client.listProjects();
+      for (const project of projects) {
+        if (project.loaded) await client.saveProject(project.project_id);
+      }
+    }
+
+    if (child.exitCode !== null || child.signalCode !== null) {
+      this.process = undefined;
+      return;
+    }
+
+    const exited = waitForExit(child, this.shutdownTimeoutMs);
+    this.process = undefined;
     child.kill('SIGTERM');
-    const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()));
-    const timedOut = sleep(this.shutdownTimeoutMs).then(() => 'timeout' as const);
-    if (await Promise.race([exited.then(() => 'exited' as const), timedOut]) === 'timeout') {
+    if (!(await exited)) {
+      const forcedExit = waitForExit(child, 1_000);
       child.kill('SIGKILL');
-      await exited;
+      if (!(await forcedExit)) {
+        child.unref();
+        throw new Error('CueMap did not exit after forced shutdown');
+      }
     }
   }
 }

@@ -22,18 +22,29 @@ async function freePort() {
 
 test('runs the SDK contract against a real release engine', {
   skip: process.env.CUEMAP_E2E !== '1',
+  timeout: 90_000,
 }, async (context) => {
   const dataDir = mkdtempSync(join(tmpdir(), 'cuemap-ts-e2e-data-'));
   const port = await freePort();
   const binPath = process.env.CUEMAP_E2E_BIN || resolve(__dirname, '../../rust_engine/target/release/cuemap');
   const projectId = `ts-e2e-${process.pid}`;
   let engine;
+  const progress = (stage) => process.stderr.write(`[cuemap-ts-e2e] ${stage}\n`);
 
   context.after(async () => {
-    await engine?.stop();
-    rmSync(dataDir, { recursive: true, force: true });
+    progress('tearing down engine');
+    try {
+      await engine?.stop();
+    } finally {
+      try {
+        await engine?.stop({ force: true });
+      } finally {
+        rmSync(dataDir, { recursive: true, force: true });
+      }
+    }
   });
 
+  progress('starting engine');
   engine = await EmbeddedCueMap.start({
     binPath,
     port,
@@ -47,6 +58,7 @@ test('runs the SDK contract against a real release engine', {
   });
 
   const client = new CueMap({ url: engine.url, projectId });
+  progress('adding and recalling memory');
   const memoryId = await client.add(
     'On 2026-08-18 we chose Postgres for the billing migration.',
     ['billing', 'postgres', 'decision'],
@@ -72,7 +84,9 @@ test('runs the SDK contract against a real release engine', {
   });
   assert.ok(exported.memories.some((item) => String(item.id) === String(memoryId)));
 
+  progress('saving and stopping engine');
   await engine.stop();
+  progress('restarting engine');
   engine = await EmbeddedCueMap.start({
     binPath,
     port,
@@ -89,6 +103,7 @@ test('runs the SDK contract against a real release engine', {
     semantic_mode: 'lexical',
     limit: 5,
   });
+  progress('checking restored memory');
   assert.ok(restored.results.some((item) => String(item.memory_id) === String(memoryId)));
 
   const isolated = new CueMap({ url: engine.url, projectId: `${projectId}-other` });
