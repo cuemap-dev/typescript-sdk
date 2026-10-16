@@ -2,6 +2,14 @@
 
 All notable changes to the CueMap TypeScript SDK will be documented in this file.
 
+## [0.7.5] - 2026-10-14
+
+### Added
+- `ExpansionDepth` type (`number | 'conversation_round'`) for recall requests, and the `'conversation'` segmenter for `/ingest/content` chat histories (Claude or ChatGPT exports, JSON message lists, role- or speaker-labelled transcripts).
+
+### Changed
+- Synchronized with CueMap Engine v0.7.5, whose recall default is `expansion_depth: 'conversation_round'` (each result gets the message it replies to, and the top result gets its answer). Pass `expansion_depth: 1` for the previous matched-memory-only behaviour.
+
 ## [0.7.3] - 2026-08-27
 
 ### Changed

@@ -12,8 +12,20 @@ export interface CueMapConfig {
 
 export type MemoryId = number | string;
 export type RecallExpansionMode = 'off' | 'auto' | 'force';
+/**
+ * Neighbour context for each result: 'conversation_round' (the engine default) prepends the
+ * message each result replies to and appends the answer to the top result (needs session,
+ * turn and role metadata on the memories; others are returned as they are), or a number
+ * (1 = the matched memory only; n > 1 adds source-ordered neighbours within radius n - 1).
+ */
+export type ExpansionDepth = number | 'conversation_round';
 export type SemanticRecallMode = 'lexical' | 'semantic' | 'hybrid';
-export type TextSegmenterMode = 'sentence_window' | 'logical_block';
+/**
+ * How `/ingest/content` splits content. 'conversation' expects a chat history (Claude or
+ * ChatGPT export, JSON message list, or a role/speaker-labelled transcript) and stores one
+ * memory per message with conversation, turn and role metadata.
+ */
+export type TextSegmenterMode = 'sentence_window' | 'logical_block' | 'conversation';
 export type IntentTarget = 'query' | 'memory';
 
 export interface IntentClassification {
@@ -149,7 +161,7 @@ export interface RecallRequest {
   trace_timing?: boolean;
   disable_salience_bias?: boolean;
   disable_alias_expansion?: boolean;
-  expansion_depth?: number;
+  expansion_depth?: ExpansionDepth;
   parent_fusion?: RecallExpansionMode;
   parent_fusion_limit?: number;
   parent_fusion_min_chunks?: number;
@@ -989,7 +1001,7 @@ export interface RecallGroundedRequest {
   projects?: string[];
   disable_salience_bias?: boolean;
   disable_alias_expansion?: boolean;
-  expansion_depth?: number;
+  expansion_depth?: ExpansionDepth;
   /** @deprecated Removed from the v0.7 engine. Accepted for source compatibility but not sent. */
   disable_pattern_completion?: boolean;
   /** @deprecated Removed from the v0.7 engine. Accepted for source compatibility but not sent. */
